@@ -1,0 +1,3443 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión de Contratos</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.rawgit.com/cozmo/jsQR/master/dist/jsQR.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        const { createClient } = window.supabase;
+    </script>
+    
+</head>
+<body>
+    <div class="container">
+        <div class="login-container" id="login-form">
+            <h1>Sistema de Gestión de Contratos</h1>
+            <div class="form-group">
+                <label for="username">Usuario:</label>
+                <input type="text" id="username" name="username">
+            </div>
+            <div class="form-group">
+                <label for="password">Contraseña:</label>
+                <input type="password" id="password" name="password">
+            </div>
+            <button onclick="login()">Iniciar Sesión</button>
+            <p id="login-error" style="color: red; display: none;">Usuario o contraseña incorrectos</p>
+        </div>
+        
+        <!-- Dashboard para el usuario Revisor (RH) -->
+        <div class="dashboard" id="revisor-dashboard">
+            <div class="header">
+                <h1>Panel de Control - Revisor RH</h1>
+                <div>
+                    <span class="user-info">Bienvenido, Analista de Talento Humano</span>
+                    <button class="logout-btn" onclick="logout()">Cerrar Sesión</button>
+                </div>
+            </div>
+            
+            <div class="tab-buttons">
+                <button onclick="showTab('comparison-tab')">Espacio de Comparación</button>
+            </div>
+            
+            <div id="comparison-tab" class="tab-content active">
+                <h2>Espacio de Comparación</h2>
+                <div style="display: flex; gap: 20px;">
+                    <!-- Sección de Excel -->
+                    <div style="flex: 1;">
+                        <h3>Datos de Excel</h3>
+                        <div class="form-group">
+                            <label for="excel-file">Cargar Archivo Excel:</label>
+                            <input type="file" id="excel-file" accept=".xlsx, .xls">
+                            <button onclick="loadExcel()">Cargar</button>
+                        </div>
+                        <div id="excel-data" style="margin-top: 20px; display: none;">
+                            <div style="margin-bottom: 10px;">
+                                <input type="text" id="search-input" placeholder="Buscar..." style="width: 300px;">
+                                <button onclick="searchRows()">Buscar</button>
+                            </div>
+                            <div id="excel-row-viewer" style="border: 1px solid #ddd; padding: 15px; border-radius: 4px;">
+                                <h4>Fila <span id="current-row-index">1</span> de <span id="total-rows">0</span></h4>
+                                <div id="excel-row-content"></div>
+                                <div style="margin-top: 10px;">
+                                    <button onclick="prevRow()" id="prev-row-btn" disabled>Anterior</button>
+                                    <button onclick="nextRow()" id="next-row-btn">Siguiente</button>
+                                </div>
+                            </div>
+                            <button onclick="saveChanges()">Guardar Cambios</button>
+                            <button onclick="downloadExcel()">Descargar Excel Actualizado</button>
+                        </div>
+                    </div>
+                    <!-- Sección de PDF -->
+                    <div style="flex: 1;">
+                        <h3>Documentos PDF</h3>
+                        <div class="form-group">
+                            <label for="pdf-file">Cargar PDF:</label>
+                            <input type="file" id="pdf-file" accept=".pdf" multiple>
+                            <button onclick="loadPDFs()">Cargar</button>
+                        </div>
+                        <div id="pdf-list" class="pdf-section">
+                            <div class="section-header">
+                                <button onclick="togglePDFList()" class="toggle-btn">
+                                    PDFs Cargados (<span id="pdf-count">0</span>)
+                                </button>
+                            </div>
+                            <div class="pdf-search-container">
+                                <input type="text" id="pdf-search-input" class="pdf-search-input" placeholder="Buscar PDF por nombre...">
+                                <button onclick="searchPDFs()" class="pdf-search-btn">Buscar</button>
+                            </div>
+                            <div id="pdf-list-content" class="pdf-content"></div>
+                        </div>
+                        <div class="pdf-viewer" id="pdf-viewer" style="display: none;">
+                            <h3 id="current-pdf-name"></h3>
+                            <div class="pdf-container" id="pdf-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Panel de Confirmador: Espacio de Comparación -->
+            <div id="confirmar-comparison-tab" class="tab-content">
+                <h2>Espacio de Comparación</h2>
+                <div style="display: flex; gap: 20px;">
+                    <!-- Sección de Excel -->
+                    <div style="flex: 1;">
+                        <h3>Revisión de Datos</h3>
+                        <div id="confirmador-excel-data" style="margin-top: 20px;">
+                            <div style="margin-bottom: 10px;">
+                                <input type="text" id="confirmador-search-input-comparacion" placeholder="Buscar..." style="width: 300px;">
+                                <button onclick="searchConfirmadorRowsComparacion()">Buscar</button>
+                            </div>
+                            <div id="confirmador-row-viewer" style="border: 1px solid #ddd; padding: 15px; border-radius: 4px;">
+                                <h4>Fila <span id="confirmador-current-row-index">1</span> de <span id="confirmador-total-rows">0</span></h4>
+                                <div id="confirmador-row-content"></div>
+                                <div style="margin-top: 10px;">
+                                    <button onclick="prevConfirmadorRow()" id="confirmador-prev-row-btn" disabled>Anterior</button>
+                                    <button onclick="nextConfirmadorRow()" id="confirmador-next-row-btn">Siguiente</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Sección de PDF -->
+                    <div style="flex: 1;">
+                        <h3>Firmar Documentos PDF</h3>
+                        <div id="confirmador-pdf-list" class="pdf-section">
+                            <div class="section-header">
+                                <button onclick="toggleConfirmadorPDFList()" class="toggle-btn">
+                                    PDFs Cargados (<span id="confirmador-pdf-count">0</span>)
+                                </button>
+                            </div>
+                            <div class="pdf-search-container">
+                                <input type="text" id="confirmador-search-input-pdf-comparacion" class="pdf-search-input confirmador-pdf-search" placeholder="Buscar PDF por nombre...">
+                                <button onclick="searchConfirmadorPDFsComparacion(this)" class="pdf-search-btn">Buscar</button>
+                            </div>
+                            <div id="confirmador-pdf-list-content" class="pdf-content"></div>
+                        </div>
+                        <div class="pdf-viewer" id="confirmador-pdf-viewer" style="display: none;">
+                            <h3 id="confirmador-current-pdf-name"></h3>
+                            <div class="pdf-container" id="confirmador-pdf-container">
+                                <div class="signature-container" style="margin-top: 20px; position: relative; z-index: 100;">
+                                    <h3>Firma Digital</h3>
+                                    <input type="file" id="signature-input-comparacion" class="signature-input" accept="image/*" onchange="handleFirmaUpload(event)">
+                                    <div id="signature-placeholder-comparacion" class="signature-placeholder">
+                                        <img id="signature-preview-comparacion" class="signature-preview" alt="Vista previa de la firma">
+                                    </div>
+                                    <div class="signature-buttons" style="margin-top: 10px; display: flex; gap: 10px; justify-content: center;">
+                                        <button onclick="clearSignature()" style="padding: 8px 15px;">Limpiar</button>
+                                        <button onclick="firmarPDF()" style="padding: 8px 15px;">Firmar Documento</button>
+                                        <button onclick="firmarTodosPDFs()" style="padding: 8px 15px;">Firmar Todos los Documentos</button>
+                                    </div>
+                                </div>
+                                <button onclick="aprobarTodosDocumentos()" class="approve-all-btn" style="margin-top: 20px; position: relative; z-index: 100;">Aprobar Todos los Documentos</button>
+                            </div>
+                            <div style="margin-top: 20px;">
+                                <button onclick="firmarPDF()" id="download-signed-pdf" style="display: none;">Descargar PDF Firmado</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard para el usuario Confirmador -->
+        <div class="dashboard" id="confirmador-dashboard" style="display: none;">
+            <div class="header">
+                <h1>Panel de Control - Directora RH</h1>
+                <div>
+                    <span class="user-info">Bienvenido, Director(a) de Talento Humanos</span>
+                    <button class="logout-btn" onclick="logout()">Cerrar Sesión</button>
+                </div>
+            </div>
+
+            <div class="confirmador-content" style="display: flex; gap: 20px; align-items: flex-start;">
+                <!-- Columna izquierda: Listas -->
+                <div style="flex: 1; min-width: 320px; max-width: 400px; display: flex; flex-direction: column; gap: 20px;">
+                    <!-- Autorización de Documento -->
+                <div class="empleados-section">
+                    <h2>Autorización Nuevos Ingresos</h2>
+                    <div class="search-container">
+                        <select id="confirmador-search-input-empleados" 
+                               class="search-input estado-select" 
+                               multiple
+                               size="4"
+                               onchange="searchConfirmadorRowsEmpleados()">
+                            <option value="SIN REVISION">Sin Revisión</option>
+                            <option value="PENDIENTE">Pendiente</option>
+                            <option value="REVISADO">Revisado</option>
+                            <option value="AUTORIZADO">Autorizado</option>
+                            <option value="">Todos los estados</option>
+                        </select>
+                        <input type="date" id="fecha-inicio-filter" class="search-input" onchange="searchConfirmadorRowsEmpleados()" placeholder="Filtrar por fecha de inicio">
+                    </div>
+                    <div id="no-docs-message" style="display: none; padding: 15px; background: #fff3e0; border-radius: 4px; margin: 10px 0;">
+                        No hay documentos para autorizar.
+                    </div>
+                    <div id="empleados-list" class="empleados-list"></div>
+                </div>
+                    <!-- Histórico debajo -->
+                    <div class="empleados-section">
+                        <h2>Histórico Contratación</h2>
+                        <div class="search-container">
+                            <input type="text" 
+                                   id="historico-search-input" 
+                                   class="search-input" 
+                                   placeholder="Buscar por nombre, documento o cargo..."
+                                   oninput="searchHistoricoEmpleados()">
+                        </div>
+                        <div id="historico-list" class="empleados-list"></div>
+                        <button onclick="downloadExcel()" class="download-btn" style="width: 100%; margin-top: 15px; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            Descargar Excel
+                        </button>
+                    </div>
+                </div>
+                <!-- Columna derecha: Detalles -->
+                <div id="empleado-details" class="empleado-details" style="flex: 2; min-width: 350px; max-width: 600px; height: 100%;">
+                    <!-- Información del empleado -->
+                    <div class="empleado-info">
+                        <h3>Detalles del Empleado</h3>
+                        <div id="info-grid" class="info-grid"></div>
+                    </div>
+                    <!-- Sección de PDFs -->
+                    <div class="pdf-section">
+                        <h3>Documentos PDF</h3>
+                        <div class="pdf-search">
+                            <input type="text" 
+                                   id="pdf-search-input-empleado" 
+                                   placeholder="Buscar PDF..." 
+                                   class="search-input" oninput="filtrarPDFs()">
+                            <button id="btn-seleccionar-todos" onclick="toggleSeleccionarTodosPDFs()" class="firma-btn" style="margin-top: 8px; margin-bottom: 8px;">Seleccionar Todos</button>
+                        </div>
+                        <div id="pdf-grid" class="pdf-grid"></div>
+                        <!-- Bloque de firma SIEMPRE visible -->
+                        <div class="firma-section" style="margin-top: 20px;">
+                            <h3>Firma Digital</h3>
+                            <div class="signature-container">
+                                <input type="file" id="signature-input-empleado" class="signature-input" accept="image/*" onchange="handleFirmaUpload(event)">
+                                <div id="signature-placeholder-empleado" class="signature-placeholder">
+                                    Haga clic aquí para cargar su firma
+                                </div>
+                                <img id="signature-preview-empleado" class="signature-preview" alt="Vista previa de la firma">
+                            </div>
+                            <div class="signature-buttons firma-btn-group">
+                                <button onclick="clearSignature()">Limpiar</button>
+                                <button onclick="firmarPDF()" class="firma-btn">Firmar Documento</button>
+                                <button onclick="firmarTodosPDFs()" class="firma-btn">Firmar Todos los Documentos</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard para el Administrador -->
+        <div class="dashboard" id="admin-dashboard" style="display: none;">
+            <div class="header">
+                <h1>Panel de Control - Administrador</h1>
+                <div>
+                    <span class="user-info">Bienvenido, Administrador</span>
+                    <button class="logout-btn" onclick="logout()">Cerrar Sesión</button>
+                    <button class="logout-btn" style="background: #1976d2; margin-left: 10px;" onclick="abrirModalCambioContrasena()">Cambiar contraseña</button>
+                </div>
+            </div>
+
+            <div class="tab-buttons">
+                <button onclick="cambiarRol('RH')">Modo RH</button>
+                <button onclick="cambiarRol('DirectoraRH')">Modo Directora RH</button>
+            </div>
+
+            <div class="admin-content">
+                <div class="info-panel">
+                    <h3>Información del Sistema</h3>
+                    <p>Rol actual: <span id="current-role">Administrador</span></p>
+                    <p>Email: <span id="admin-email"></span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase configuration
+        const SUPABASE_URL = 'https://ixhsjtsilnfhuzgvkyve.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4aHNqdHNpbG5maHV6Z3ZreXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU1MDA1NDYsImV4cCI6MjA2MTA3NjU0Nn0.pCrpF73wECI12ti_Vcew5q4a_WvSvsifiSQ-psolAv4';
+        
+        // Initialize Supabase client
+        let supabase;
+        try {
+            supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                auth: {
+                    autoRefreshToken: true,
+                    persistSession: true
+                }
+            });
+            console.log('Supabase initialized successfully');
+        } catch (error) {
+            console.error('Error initializing Supabase:', error);
+        }
+
+        // Variables globales
+        let currentUser = null;
+        let workbook = null;
+        let currentPDF = null;
+        let signatureData = null;
+        let signedPDFs = {};
+        let SIGNATURE_BASE64 = '';
+        // Variable para la marca de agua (aquí puedes poner tu base64)
+        const WATERMARK_BASE64 = 'data:image/png;base64,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';
+
+        // Datos compartidos
+        let sharedData = {
+            excelData: null,
+            currentRowIndex: 1,
+            filteredRows: [],
+            pdfs: {}
+        };
+
+        
+
+
+        // Función para buscar empleados (Confirmador)
+        function searchConfirmadorRows() {
+            try {
+                const searchInput = document.getElementById('confirmador-search-input');
+                if (!searchInput) {
+                    console.error('No se encontró el campo de búsqueda');
+                    return;
+                }
+
+                const searchTerm = searchInput.value.toLowerCase().trim();
+                const empleadosList = document.getElementById('empleados-list');
+                
+                if (!empleadosList) {
+                    console.error('No se encontró la lista de empleados');
+                    return;
+                }
+
+                if (!sharedData.excelData || !Array.isArray(sharedData.excelData) || sharedData.excelData.length <= 1) {
+                    console.log('No hay datos para buscar');
+                    empleadosList.innerHTML = '<p>No hay datos disponibles</p>';
+                    return;
+                }
+
+                empleadosList.innerHTML = '';
+                const headers = sharedData.excelData[0];
+                
+                // Índices de las columnas de búsqueda
+                const nombreIndex = headers.indexOf('NOMBRES Y APELLIDOS');
+                const documentoIndex = headers.indexOf('No. DE IDENTIFICACIÓN');
+                const estadoIndex = headers.indexOf('ESTADO');
+                const cargoIndex = headers.indexOf('CARGO');
+
+                let encontrados = false;
+
+                for (let i = 1; i < sharedData.excelData.length; i++) {
+                    const row = sharedData.excelData[i];
+                    if (!row) continue;
+
+                    const nombre = String(row[nombreIndex] || '').toLowerCase();
+                    const documento = String(row[documentoIndex] || '').toLowerCase();
+                    const cargo = String(row[cargoIndex] || '').toLowerCase();
+                    const estado = row[estadoIndex] || 'SIN REVISION';
+
+                    // Buscar en nombre, documento y cargo
+                    if (searchTerm === '' || 
+                        nombre.includes(searchTerm) || 
+                        documento.includes(searchTerm) || 
+                        cargo.includes(searchTerm)) {
+                        
+                        encontrados = true;
+                        const empleadoCard = document.createElement('div');
+                        empleadoCard.className = `empleado-card ${estado.toLowerCase().replace(' ', '-')}`;
+                        empleadoCard.innerHTML = `
+                            <div class="empleado-nombre">${row[nombreIndex] || 'Sin nombre'}</div>
+                            <div class="empleado-info">
+                                <span>Documento: ${row[documentoIndex] || 'N/A'}</span>
+                                <span>Cargo: ${row[cargoIndex] || 'N/A'}</span>
+                            </div>
+                            <div class="empleado-estado">Estado: ${estado}</div>
+                        `;
+                        empleadoCard.onclick = () => showEmpleadoDetails(i);
+                        empleadosList.appendChild(empleadoCard);
+                    }
+                }
+
+                if (!encontrados) {
+                    empleadosList.innerHTML = '<p>No se encontraron resultados</p>';
+                }
+
+            } catch (error) {
+                console.error('Error en la búsqueda:', error);
+                alert('Error al buscar empleados: ' + error.message);
+            }
+        }
+
+        // Subir firma a Supabase Storage y obtener URL pública
+        async function uploadFirmaToSupabase(file) {
+            const filePath = `firmas/${file.name}`;
+            // Subir el archivo (upsert para sobrescribir si ya existe)
+            const { error } = await supabase.storage.from('firmas').upload(filePath, file, {
+                cacheControl: '3600',
+                upsert: true
+            });
+            if (error) throw error;
+            // Obtener la URL pública
+            const { data: publicUrlData } = supabase.storage.from('firmas').getPublicUrl(filePath);
+            return publicUrlData.publicUrl;
+        }
+
+        // Función para manejar la carga de firma
+        async function handleFirmaUpload(event) {
+            if (!currentUser || (currentUser.role !== 'DirectoraRH' && currentUser.role !== 'admin')) {
+                alert('Solo el rol de DirectoraRH o admin puede cargar una firma.');
+                event.target.value = '';
+                return;
+            }
+            // Fijar la URL pública de la firma directamente con doble barra
+            window.firmaUrl = "https://ixhsjtsilnfhuzgvkyve.supabase.co/storage/v1/object/public/firmas//firma.png";
+            document.querySelectorAll('.signature-preview').forEach(preview => {
+                preview.src = window.firmaUrl;
+                preview.style.display = 'block';
+            });
+            document.querySelectorAll('.signature-placeholder').forEach(placeholder => {
+                placeholder.style.display = 'none';
+            });
+            alert('Firma cargada correctamente (usando la URL fija con doble barra).');
+        }
+
+        // Función para cargar Excel
+        async function loadExcel() {
+            try {
+                const fileInput = document.getElementById('excel-file');
+                const file = fileInput.files[0];
+                
+                if (!file) {
+                    alert('Por favor seleccione un archivo Excel');
+                    return;
+                }
+
+                // Verificar el tipo de archivo
+                const validTypes = [
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'application/vnd.ms-excel'
+                ];
+                if (!validTypes.includes(file.type)) {
+                    alert('Por favor, seleccione un archivo Excel válido (.xlsx o .xls)');
+                    return;
+                }
+
+                const reader = new FileReader();
+                
+                reader.onload = async function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        
+                        if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+                            throw new Error('El archivo Excel está vacío o dañado');
+                        }
+                        
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        if (!firstSheet) {
+                            throw new Error('No se pudo leer la hoja de cálculo');
+                        }
+
+                        // Convertir a JSON con manejo de errores
+                        const newExcelData = XLSX.utils.sheet_to_json(firstSheet, { 
+                            header: 1,
+                            raw: false,
+                            defval: '' // Valor por defecto para celdas vacías
+                        });
+
+                        if (!newExcelData || newExcelData.length <= 1) {
+                            throw new Error('El archivo Excel no contiene datos suficientes');
+                        }
+
+                        // Guardar datos en el objeto compartido
+                        sharedData.excelData = newExcelData;
+                        sharedData.filteredRows = Array.from(
+                            { length: newExcelData.length - 1 }, 
+                            (_, i) => i + 1
+                        );
+                        sharedData.currentRowIndex = 1;
+
+                        // Actualizar la interfaz
+                        document.getElementById('excel-data').style.display = 'block';
+                        document.getElementById('total-rows').textContent = sharedData.filteredRows.length;
+                        displayExcelRow();
+
+                        // Guardar en Supabase
+                        try {
+                            await saveToSupabase();
+                            // Nueva integración: cargar también en la tabla empleados
+                            await cargarExcelASupabase(newExcelData);
+                            console.log('Excel guardado en Supabase exitosamente');
+                        } catch (supabaseError) {
+                            console.error('Error al guardar en Supabase:', supabaseError);
+                            alert('Los datos se cargaron correctamente pero hubo un error al guardarlos en la base de datos. Por favor, intente guardar los cambios manualmente.');
+                        }
+
+                    } catch (error) {
+                        console.error('Error al procesar el Excel:', error);
+                        alert('Error al procesar el archivo Excel: ' + error.message);
+                        document.getElementById('excel-data').style.display = 'none';
+                    }
+                };
+
+                reader.onerror = function(error) {
+                    console.error('Error al leer el archivo:', error);
+                    alert('Error al leer el archivo Excel. Por favor, intente nuevamente.');
+                };
+                
+                reader.readAsArrayBuffer(file);
+                
+            } catch (error) {
+                console.error('Error al cargar el Excel:', error);
+                alert('Error al cargar el archivo Excel: ' + error.message);
+            }
+        }
+
+        // Función para compilar datos de Excel
+        async function compileExcelData(newData, existingData) {
+            try {
+                if (!newData || newData.length <= 1) {
+                    throw new Error('El archivo Excel está vacío o no tiene datos suficientes');
+                }
+
+                // Obtener headers
+                const headers = newData[0];
+                // Buscar los índices usando encabezados normalizados
+                const nombreIndex = headers.findIndex(h => normalizarTexto(h) === 'NOMBRES Y APELLIDOS');
+                const documentoIndex = headers.findIndex(h => normalizarTexto(h) === 'NO DE IDENTIFICACION');
+
+                // Validar columnas requeridas y mapear nombres de columnas
+                const columnMapping = {
+                    'NOMBRES Y APELLIDOS': ['NOMBRES Y APELLIDOS'],
+                    'DOCUMENTO': ['No. DE IDENTIFICACIÓN', 'DOCUMENTO', 'No. DE IDENTIFICACION']
+                };
+
+                const columnasRequeridas = Object.keys(columnMapping);
+                const columnasFaltantes = columnasRequeridas.filter(colReq => {
+                    // Verificar si alguna de las variantes de la columna existe (normalizando)
+                    return !columnMapping[colReq].some(variant => headers.some(h => normalizarTexto(h) === normalizarTexto(variant)));
+                });
+
+                if (columnasFaltantes.length > 0) {
+                    throw new Error(`El archivo Excel debe contener las siguientes columnas obligatorias: ${columnasFaltantes.join(', ')}. \nColumnas encontradas en tu Excel: ${headers.join(', ')}`);
+                }
+
+                // Resto del código igual...
+                const compiledData = [headers];
+                const existingEmployees = new Map();
+
+                if (existingData && existingData.length > 0) {
+                    existingData.forEach(record => {
+                        const employeeData = record.data;
+                        if (employeeData && employeeData.length > 1) {
+                            for (let i = 1; i < employeeData.length; i++) {
+                                const row = employeeData[i];
+                                if (row && row[nombreIndex] && row[documentoIndex]) {
+                                    const key = `${row[nombreIndex]}_${row[documentoIndex]}`;
+                                    existingEmployees.set(key, row);
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // Procesar nuevos datos
+                for (let i = 1; i < newData.length; i++) {
+                    const row = newData[i];
+                    if (!row) continue;
+
+                    // Obtener nombre y documento con validación más flexible
+                    const nombre = row[nombreIndex]?.toString().trim();
+                    const documento = row[documentoIndex]?.toString().trim();
+
+                    // Si falta algún dato requerido, registrar advertencia pero continuar
+                    if (!nombre || !documento) {
+                    //    console.warn(`Advertencia: Fila ${i + 1} tiene datos incompletos - Nombre: ${nombre || 'FALTA'}, Documento: ${documento || 'FALTA'}`);
+                        // Continuar con la siguiente fila
+                        continue;
+                    }
+
+                    const key = `${nombre}_${documento}`;
+                    
+                    if (existingEmployees.has(key)) {
+                        const existingRow = existingEmployees.get(key);
+                        const estadoIndex = headers.indexOf('ESTADO');
+                        if (estadoIndex !== -1) {
+                            row[estadoIndex] = existingRow[estadoIndex] || 'SIN REVISION';
+                        }
+                    }
+
+                    compiledData.push(row);
+                }
+
+                // Guardar en Supabase
+                const { error } = await supabase
+                    .from('excel_data')
+                    .insert([{
+                        data: compiledData,
+                        upload_date: new Date().toISOString()
+                    }]);
+
+                if (error) {
+                    throw new Error('Error al guardar datos compilados: ' + error.message);
+                }
+
+                return compiledData;
+            } catch (error) {
+                console.error('Error al compilar datos:', error);
+                alert(error.message);
+                throw error;
+            }
+        }
+
+        // Función para guardar cambios del revisor
+        async function saveChanges() {
+            try {
+                if (!sharedData.excelData || !Array.isArray(sharedData.excelData)) {
+                    throw new Error('No hay datos válidos para guardar');
+                }
+
+                // Asegurarse de que exista la primera fila (headers)
+                if (!sharedData.excelData[0]) {
+                    throw new Error('El archivo Excel no tiene encabezados válidos');
+                }
+
+                const headers = sharedData.excelData[0];
+                
+                // Mapeo completo de nombres de columnas de Excel a nombres en la base de datos
+                const columnMapping = {
+                    'ITEM': 'item',
+                    'TIPO CONTRATO': 'tipo_contrato',
+                    'NOMBRES Y APELLIDOS': 'nombres_y_apellidos',
+                    'TIPO DOCUMENTO IDENTIFICACIÓN': 'tipo_documento_identificacion',
+                    'No. DE IDENTIFICACIÓN': 'no_de_identificacion',
+                    'LUGAR EXPEDICIÓN DOCUMENTO IDENTIFICACIÓN': 'lugar_expedicion_documento_identificacion',
+                    'FECHA DE NACIMIENTO': 'fecha_de_nacimiento',
+                    'LUGAR DE NACIMIENTO': 'lugar_de_nacimiento',
+                    'NACIONALIDAD': 'nacionalidad',
+                    'DIRECCIÓN DE RESIDENCIA': 'direccion_de_residencia',
+                    'MUNICIPIO DEPARTAMENTO RESIDENCIA': 'municipio_departamento_residencia',
+                    'TELÉFONO CELULAR': 'telefono_celular',
+                    'CORREO ELECTRÓNICO': 'correo_electronico',
+                    'CARGO': 'cargo',
+                    'CATEGORÍA TABLA': 'categoria_tabla',
+                    'PROYECTO Y/O ORDEN DE SERVICIO': 'proyecto_y_o_orden_de_servicio',
+                    'OBRA O LABOR CONTRATADA': 'obra_o_labor_contratada',
+                    'LUGAR DE EJECUCIÓN': 'lugar_de_ejecucion',
+                    'FECHA DE INICIO': 'fecha_de_inicio',
+                    'PERIODO DE PRUEBA': 'periodo_de_prueba',
+                    'FECHA TERMINACIÓN': 'fecha_terminacion',
+                    'SALARIO': 'salario',
+                    'SALARIO LETRAS': 'salario_letras',
+                    'CLAUSURA TERCERA': 'clausura_tercera',
+                    'HORARIO LABORAL': 'horario_laboral',
+                    'PARÁGRAFO DIRECCIÓN MANEJO Y CONFIANZA': 'paragrafo_direccion_manejo_y_confianza',
+                    'FECHA FIRMA CONTRATO': 'fecha_firma_contrato',
+                    'NIVEL DE ESTUDIO': 'nivel_de_estudio',
+                    'TÍTULO': 'titulo',
+                    'TARJETA-LICENCIA-MATRICULA-COPNIA': 'tarjeta_licencia_matricula_copnia',
+                    'COMPETENCIAS TÉCNICAS CUMPLE/NO CUMPLE/NO APLICA': 'competencias_tecnicas_cumple_no_cumple_no_aplica',
+                    'CURSOS': 'cursos',
+                    'LICENCIA DE CONDUCCIÓN': 'licencia_de_conduccion',
+                    'EXPERIENCIA LABORAL': 'experiencia_laboral',
+                    'SIG-GR-F-42 SOLICITUD DE PERSONAL': 'sig_gr_f_42_solicitud_de_personal',
+                    'CERTIFICADO DE RESIDENCIA': 'certificado_de_residencia',
+                    'POSTULACIÓN APE': 'postulacion_ape',
+                    'APROBACIÓN SSTA CARGOS': 'aprobacion_ssta_cargos',
+                    'APROBACIÓN SSTA EMO': 'aprobacion_ssta_emo',
+                    'SAGRILAFT': 'sagrilaft',
+                    'ARL': 'arl',
+                    'EPS': 'eps',
+                    'AFP': 'afp',
+                    'CESANTIAS': 'cesantias',
+                    'CUENTA BANCARIA': 'cuenta_bancaria',
+                    'BANCO': 'banco',
+                    'FECHA EXPEDICIÓN DOC. IDENTIDAD': 'fecha_expedicion_doc_identidad',
+                    'SEXO': 'sexo',
+                    'ESTADO CIVIL': 'estado_civil',
+                    'CONFIRMACIÓN CONTRATACIÓN GERENCIA OPERACIONES': 'confirmacion_contratacion_gerencia_operaciones',
+                    'OBSERVACIONES': 'observaciones',
+                    'ESTADO': 'estado',
+                    'SIG-GR-F-06 INDUCCIÓN': 'sig_gr_f_06_induccion',
+                    'SIG-GR-F-31 FUNCIONES': 'sig_gr_f_31_funciones',
+                    'SIG-GR-F-27 INFORMACIÓN TRABAJADOR': 'sig_gr_f_27_informacion_trabajador',
+                    'SIG-GR-F-04 DOTACIÓN Y EPPS': 'sig_gr_f_04_dotacion_y_epps',
+                    'FORMATO MANEJO DE IMAGEN': 'formato_manejo_de_imagen',
+                    'AUTORIZACION MEDIOS ELECTRÓNICOS': 'autorizacion_medios_electronicos',
+                    'SIG-GR-F-01 ENTREVISTA': 'sig_gr_f_01_entrevista',
+                    'SIG-GR-F-03 ASIGNACIÓN ROL': 'sig_gr_f_03_asignacion_rol',
+                    'SIG-GR-F-37 HV CONDUCTORES': 'sig_gr_f_37_hv_conductores',
+                    'SIG-GR-F-61 PERFIL DEL CARGO, FUNCIONES Y RESPONSABILIDADES': 'sig_gr_f_61_perfil_del_cargo_funciones_y_responsabilidades',
+                    'HV DIGITAL COMPLETA SEGÚN SIG-GR-F-32': 'hv_digital_completa_segun_sig_gr_f_32',
+                    'PDF_ASOCIADO': 'pdf_asociado'
+                };
+
+                // Lista de campos que contienen fechas
+                const camposFecha = [
+                    'fecha_de_nacimiento',
+                    'fecha_de_inicio',
+                    'fecha_terminacion',
+                    'fecha_firma_contrato',
+                    'fecha_expedicion_doc_identidad'
+                ];
+
+                // Procesar cada fila y actualizar en Supabase
+                for (let i = 1; i < sharedData.excelData.length; i++) {
+                    const row = sharedData.excelData[i];
+                    if (!row) continue;
+
+                    // Crear objeto con los datos actualizados
+                    const empleadoData = {};
+                    headers.forEach((header, index) => {
+                        const dbColumn = columnMapping[header];
+                        if (dbColumn) {
+                            let value = row[index] || '';
+                            
+                            // Formatear fechas si es necesario
+                            if (camposFecha.includes(dbColumn)) {
+                                value = formatearFecha(value);
+                            }
+                            
+                            empleadoData[dbColumn] = value;
+                        }
+                    });
+
+                    // Validar campos obligatorios
+                    if (!empleadoData.nombres_y_apellidos || !empleadoData.no_de_identificacion) {
+                        console.warn(`Fila ${i} omitida: faltan campos obligatorios`);
+                        continue;
+                    }
+
+                    // Actualizar en la tabla empleados
+                    const { error } = await supabase
+                        .from('empleados')
+                        .upsert([empleadoData], { 
+                            onConflict: 'no_de_identificacion',
+                            ignoreDuplicates: false
+                        });
+
+                    if (error) {
+                        console.error(`Error al actualizar empleado ${row[headers.indexOf('NOMBRES Y APELLIDOS')]}:`, error);
+                    }
+                }
+
+                // Guardar también en shared_data para mantener la consistencia
+                await saveToSupabase();
+
+                alert('Cambios guardados correctamente. Los documentos están listos para ser revisados por la Directora RH.');
+            } catch (error) {
+                console.error('Error al guardar cambios:', error);
+                alert('Error al guardar los cambios: ' + error.message);
+            }
+        }
+
+        // Función para guardar datos en Supabase
+        async function saveToSupabase() {
+            try {
+                const dataToStore = {
+                    excelData: sharedData.excelData,
+                    pdfs: {},
+                    last_updated: new Date().toISOString()
+                };
+
+                // Convertir ArrayBuffer a Base64 para los PDFs
+                for (const filename in sharedData.pdfs) {
+                    const arrayBuffer = sharedData.pdfs[filename];
+                    console.log('Guardando PDF:', filename, arrayBuffer, typeof arrayBuffer, arrayBuffer instanceof ArrayBuffer);
+                    if (arrayBuffer && (arrayBuffer instanceof ArrayBuffer || ArrayBuffer.isView(arrayBuffer))) {
+                        const base64 = arrayBufferToBase64(arrayBuffer);
+                        dataToStore.pdfs[filename] = base64;
+                    } else {
+                        console.warn('El PDF no es un ArrayBuffer válido:', filename, arrayBuffer);
+                    }
+                }
+
+                const { data, error } = await supabase
+                    .from('shared_data')
+                    .upsert([
+                        {
+                            id: 'current_data',
+                            data: dataToStore
+                        }
+                    ]);
+
+                if (error) throw error;
+                console.log('Datos guardados en Supabase');
+            } catch (error) {
+                console.error('Error al guardar en Supabase:', error);
+                throw error;
+            }
+        }
+
+        // Función para mostrar una fila en el visor del Confirmador
+        function displayConfirmadorRow() {
+            if (!sharedData.excelData || sharedData.excelData.length <= 1) {
+                const rowViewer = document.getElementById('confirmador-row-content');
+                if (rowViewer) {
+                    rowViewer.innerHTML = '<p>No hay datos disponibles</p>';
+                }
+                return;
+            }
+            
+            const rowViewer = document.getElementById('confirmador-row-content');
+            if (!rowViewer) return;
+            
+            const headers = sharedData.excelData[0];
+            const rowIndex = sharedData.filteredRows[sharedData.currentRowIndex - 1];
+            const rowData = sharedData.excelData[rowIndex] || [];
+            
+            rowViewer.innerHTML = '';
+            
+            headers.forEach((header, index) => {
+                const div = document.createElement('div');
+                div.className = 'form-group';
+                
+                if (header === 'ESTADO' || index === 45) {
+                    const estadoOptions = ['SIN REVISION', 'PENDIENTE', 'REVISADO', 'AUTORIZADO'];
+                    const currentValue = rowData[index] || 'SIN REVISION';
+                    
+                    div.innerHTML = `
+                        <label>${header}</label>
+                        <select class="estado-select" data-row="${rowIndex}" data-col="${index}">
+                            ${estadoOptions.map(option => 
+                                `<option value="${option}" ${currentValue === option ? 'selected' : ''}>${option}</option>`
+                            ).join('')}
+                        </select>
+                    `;
+                } else {
+                    div.innerHTML = `
+                        <label>${header}</label>
+                        <input type="text" value="${rowData[index] || ''}" readonly>
+                    `;
+                }
+                rowViewer.appendChild(div);
+            });
+            
+            // Actualizar navegación
+            document.getElementById('confirmador-current-row-index').textContent = sharedData.currentRowIndex;
+            document.getElementById('confirmador-total-rows').textContent = sharedData.filteredRows.length;
+            document.getElementById('confirmador-prev-row-btn').disabled = sharedData.currentRowIndex === 1;
+            document.getElementById('confirmador-next-row-btn').disabled = sharedData.currentRowIndex === sharedData.filteredRows.length;
+        }
+
+        // Función para formatear fechas
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            return String(dateString).trim();
+        }
+        
+        // Función para alternar la visibilidad de la lista de PDFs (Revisor)
+        function togglePDFList() {
+            const content = document.getElementById('pdf-list-content');
+            const button = document.querySelector('#pdf-list button');
+            const isHidden = content.style.display === 'none';
+            
+            content.style.display = isHidden ? 'block' : 'none';
+            button.classList.toggle('expanded', isHidden);
+        }
+
+        // Función para alternar la visibilidad de la lista de PDFs (Confirmador)
+        function toggleConfirmadorPDFList() {
+            const content = document.getElementById('confirmador-pdf-list-content');
+            const button = document.querySelector('#confirmador-pdf-list button');
+            const isHidden = content.style.display === 'none';
+            
+            content.style.display = isHidden ? 'block' : 'none';
+            button.classList.toggle('expanded', isHidden);
+        }
+        // Función para cargar PDFs
+        function loadPDFs() {
+            const fileInput = document.getElementById('pdf-file');
+            const files = fileInput.files;
+            
+            if (files.length === 0) {
+                alert('Por favor seleccione al menos un archivo PDF');
+                return;
+            }
+            
+            // Limpiar la lista de PDFs anterior
+            const pdfListContent = document.getElementById('pdf-list-content');
+            pdfListContent.innerHTML = '';
+            
+            // Actualizar el contador
+            document.getElementById('pdf-count').textContent = files.length;
+            
+            // Obtener índices de columnas relevantes
+            const headers = sharedData.excelData ? sharedData.excelData[0] : [];
+            let pdfAsociadoIndex = headers.indexOf('PDF_ASOCIADO');
+            const nombreIndex = headers.indexOf('NOMBRES Y APELLIDOS');
+            const docIndex = headers.indexOf('No. DE IDENTIFICACIÓN');
+            // Si la columna PDF_ASOCIADO no existe, la agregamos
+            if (pdfAsociadoIndex === -1 && headers.length > 0) {
+                headers.push('PDF_ASOCIADO');
+                pdfAsociadoIndex = headers.length - 1;
+                // Agregar la columna vacía a todas las filas
+                for (let i = 1; i < sharedData.excelData.length; i++) {
+                    sharedData.excelData[i][pdfAsociadoIndex] = '';
+                }
+            }
+            
+            // Cargar cada PDF
+            let loadedCount = 0;
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const reader = new FileReader();
+                
+                reader.onload = (function(file) {
+                    return function(e) {
+                        const pdfData = e.target.result; // Esto es un ArrayBuffer
+                        sharedData.pdfs[file.name] = pdfData;
+                        
+                        // --- ASOCIACIÓN AUTOMÁTICA ---
+                        let asociado = false;
+                        if (sharedData.excelData && sharedData.excelData.length > 1) {
+                            for (let j = 1; j < sharedData.excelData.length; j++) {
+                                const row = sharedData.excelData[j];
+                                const doc = (row[docIndex] || '').toString();
+                                const nombre = (row[nombreIndex] || '').toLowerCase().replace(/\s+/g, '');
+                                // 1. Buscar por número de identificación
+                                if (doc && file.name.includes(doc)) {
+                                    row[pdfAsociadoIndex] = file.name;
+                                    asociado = true;
+                                    break;
+                                }
+                                // 2. Si no, buscar por nombre
+                                if (!asociado && nombre.length > 0) {
+                                    const nombreArchivo = file.name.toLowerCase().replace(/\s+/g, '');
+                                    if (nombreArchivo.includes(nombre)) {
+                                        row[pdfAsociadoIndex] = file.name;
+                                        asociado = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        // --- FIN ASOCIACIÓN ---
+                        
+                        // Crear miniatura
+                        const thumbnail = document.createElement('div');
+                        thumbnail.className = 'pdf-thumbnail';
+                        thumbnail.innerHTML = `
+                            <div style="width: 100px; height: 140px; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; border: 1px solid #ddd;">
+                                <div style="text-align: center;">
+                                    <div style="font-size: 40px; color: #666;">📄</div>
+                                    <div style="font-size: 12px; color: #666;">PDF</div>
+                                </div>
+                            </div>
+                            <div>${file.name}</div>
+                        `;
+                        thumbnail.onclick = function() {
+                            displayPDF(file.name);
+                        };
+                        
+                        pdfListContent.appendChild(thumbnail);
+                        
+                        // Incrementar contador y guardar cuando todos los PDFs estén cargados
+                        loadedCount++;
+                        if (loadedCount === files.length) {
+                            saveToSupabase();
+                            console.log('PDFs guardados en Supabase');
+                            // Actualizar vista del confirmador si está visible
+                            const confirmadorDashboard = document.getElementById('confirmador-dashboard');
+                            if (confirmadorDashboard && confirmadorDashboard.style.display === 'block') {
+                                loadConfirmadorData();
+                            }
+                            alert('¡Carga finalizada! Los PDFs han sido asociados automáticamente a los empleados.');
+                        }
+                    };
+                })(file);
+                
+                reader.readAsArrayBuffer(file);
+            }
+        }
+        
+        // Función para mostrar un PDF
+        function displayPDF(filename) {
+            console.log('displayPDF llamado con:', filename);
+            if (!sharedData.pdfs[filename]) {
+                alert('Error: PDF no encontrado.');
+                return;
+            }
+            currentPDF = filename;
+            console.log('currentPDF actualizado a:', currentPDF);
+
+            document.getElementById('pdf-viewer').style.display = 'block';
+            document.getElementById('current-pdf-name').textContent = filename;
+
+            const container = document.getElementById('pdf-container');
+            container.innerHTML = '';
+
+            const pdfBlob = new Blob([sharedData.pdfs[filename]], { type: 'application/pdf' });
+            const pdfUrl = URL.createObjectURL(pdfBlob);
+
+            const iframe = document.createElement('iframe');
+            iframe.src = pdfUrl;
+            iframe.width = '100%';
+            iframe.height = '100%';
+            iframe.style.border = 'none';
+
+            container.appendChild(iframe);
+        }
+        
+        // Función para buscar PDFs (Revisor)
+        function searchPDFs() {
+            const searchTerm = document.getElementById('pdf-search-input').value.toLowerCase();
+            const thumbnails = document.querySelectorAll('#pdf-list-content .pdf-thumbnail');
+            
+            thumbnails.forEach(thumbnail => {
+                const pdfName = thumbnail.querySelector('div:last-child').textContent.toLowerCase();
+                thumbnail.style.display = pdfName.includes(searchTerm) ? 'block' : 'none';
+            });
+        }
+
+        // Función para mostrar detalles del empleado y su PDF asociado
+        function showEmpleadoDetails(rowIndex) {
+            if (!sharedData.excelData || !sharedData.excelData[rowIndex]) return;
+
+            const headers = sharedData.excelData[0];
+            const rowData = sharedData.excelData[rowIndex];
+            
+            // Mostrar el contenedor de detalles
+            const detallesContainer = document.getElementById('empleado-details');
+            detallesContainer.classList.add('active');
+            
+            // Mostrar información del empleado
+            const infoGrid = document.getElementById('info-grid');
+            infoGrid.innerHTML = '';
+            
+            headers.forEach((header, index) => {
+                const infoItem = document.createElement('div');
+                infoItem.className = 'info-item';
+                
+                // Si es el campo ESTADO y el usuario es confirmador, mostrar select
+                if (header === 'ESTADO' && currentUser && currentUser.role === 'DirectoraRH') {
+                    const estadoOptions = ['SIN REVISION', 'PENDIENTE', 'REVISADO', 'AUTORIZADO'];
+                    const currentEstado = rowData[index] || 'SIN REVISION';
+                    infoItem.innerHTML = `
+                        <label>${header}</label>
+                        <select class="form-control estado-select" data-row="${rowIndex}" data-col="${index}" onchange="updateEstadoEmpleado(this)">
+                            ${estadoOptions.map(option => 
+                                `<option value="${option}" ${currentEstado === option ? 'selected' : ''}>${option}</option>`
+                            ).join('')}
+                        </select>
+                    `;
+                } else {
+                    // Para otros campos, mostrar el valor como texto
+                    infoItem.innerHTML = `
+                        <label>${header}</label>
+                        <span>${rowData[index] || ''}</span>
+                    `;
+                }
+                infoGrid.appendChild(infoItem);
+            });
+
+            // Mostrar PDFs disponibles
+            const pdfGrid = document.getElementById('pdf-grid');
+            pdfGrid.innerHTML = '';
+            
+            Object.keys(sharedData.pdfs).forEach(filename => {
+                const pdfItem = document.createElement('div');
+                pdfItem.className = 'pdf-item';
+                pdfItem.innerHTML = `
+                    <div class="pdf-icon">📄</div>
+                    <div class="pdf-name">${filename}</div>
+                `;
+                pdfItem.onclick = () => displayConfirmadorPDF(filename);
+                pdfGrid.appendChild(pdfItem);
+            });
+
+            // Configurar búsqueda de PDFs
+            const pdfSearchInput = document.getElementById('pdf-search-input-empleado');
+            if (pdfSearchInput) {
+                pdfSearchInput.oninput = () => {
+                    const searchTerm = pdfSearchInput.value.toLowerCase();
+                    const pdfItems = pdfGrid.querySelectorAll('.pdf-item');
+                    
+                    pdfItems.forEach(item => {
+                        const pdfName = item.querySelector('.pdf-name').textContent.toLowerCase();
+                        item.style.display = pdfName.includes(searchTerm) ? 'block' : 'none';
+                    });
+                };
+            }
+        }
+
+        // Función para actualizar el estado del empleado
+        async function updateEstadoEmpleado(selectElement) {
+            try {
+                const rowIndex = parseInt(selectElement.dataset.row);
+                const colIndex = parseInt(selectElement.dataset.col);
+                const newEstado = selectElement.value;
+
+                if (!sharedData.excelData || !sharedData.excelData[rowIndex]) {
+                    throw new Error('No se encontraron los datos del empleado');
+                }
+
+                // Obtener los datos del empleado
+                const headers = sharedData.excelData[0];
+                const rowData = sharedData.excelData[rowIndex];
+                const nombreIndex = headers.indexOf('NOMBRES Y APELLIDOS');
+                const documentoIndex = headers.indexOf('No. DE IDENTIFICACIÓN');
+
+                // Actualizar el estado en los datos
+                sharedData.excelData[rowIndex][colIndex] = newEstado;
+
+                // Guardar cambios en shared_data
+                await saveToSupabase();
+
+                // Actualizar en la tabla empleados
+                const { error: empleadoError } = await supabase
+                    .from('empleados')
+                    .update({ estado: newEstado })
+                    .eq('no_de_identificacion', rowData[documentoIndex]);
+
+                if (empleadoError) {
+                    console.error('Error al actualizar estado en tabla empleados:', empleadoError);
+                    throw empleadoError;
+                }
+
+                // Actualizar la vista de la lista de empleados
+                const empleadosList = document.getElementById('empleados-list');
+                if (empleadosList) {
+                    const empleadoCards = empleadosList.querySelectorAll('.empleado-card');
+                    empleadoCards[rowIndex - 1]?.classList.remove('sin-revision', 'pendiente', 'revisado', 'autorizado');
+                    empleadoCards[rowIndex - 1]?.classList.add(newEstado.toLowerCase().replace(' ', '-'));
+                    const estadoElement = empleadoCards[rowIndex - 1]?.querySelector('.empleado-estado');
+                    if (estadoElement) {
+                        estadoElement.textContent = `Estado: ${newEstado}`;
+                    }
+                }
+
+                console.log('Estado actualizado correctamente en ambas tablas');
+            } catch (error) {
+                console.error('Error al actualizar el estado:', error);
+                alert('Error al actualizar el estado: ' + error.message);
+            }
+        }
+
+        // Función para mostrar el diálogo de firma
+        function mostrarFirma() {
+            const pdfContainer = document.getElementById('confirmador-pdf-container');
+            const iframe = pdfContainer.querySelector('iframe');
+            if (!iframe) return;
+
+            // Aquí implementaremos la lógica para mostrar el diálogo de firma
+            // y permitir firmar en la última página del PDF
+        }
+
+        // Función para cerrar el visor de PDF
+        function closePDFViewer() {
+            document.getElementById('confirmador-pdf-viewer').style.display = 'none';
+        }
+
+        // Función para cargar datos del confirmador
+        async function loadConfirmadorData() {
+            console.log('Cargando datos del confirmador...');
+            try {
+                // Verificar que los elementos del DOM existan
+                const noDocsMessage = document.getElementById('no-docs-message');
+                const empleadosList = document.getElementById('empleados-list');
+                const historicoList = document.getElementById('historico-list');
+                if (!noDocsMessage || !empleadosList || !historicoList) {
+                    console.error('Elementos del DOM no encontrados');
+                    return;
+                }
+                // Leer datos de shared_data (PDFs en Base64)
+                const { data, error } = await supabase
+                    .from('shared_data')
+                    .select('data')
+                    .eq('id', 'current_data')
+                    .single();
+                if (error) {
+                    console.error('Error al obtener datos de Supabase:', error);
+                    noDocsMessage.style.display = 'block';
+                    noDocsMessage.textContent = 'Error al cargar los datos. Por favor, intente nuevamente.';
+                    return;
+                }
+                if (!data || !data.data) {
+                    console.log('No hay datos disponibles en Supabase');
+                    noDocsMessage.style.display = 'block';
+                    empleadosList.innerHTML = '';
+                    historicoList.innerHTML = '';
+                    return;
+                }
+                // Inicializar sharedData si no existe
+                if (!window.sharedData) {
+                    window.sharedData = {
+                        excelData: null,
+                        pdfs: {}
+                    };
+                }
+                // Actualizar sharedData con los datos guardados
+                if (data.data.excelData) {
+                    sharedData.excelData = data.data.excelData;
+                    console.log('Datos de Excel cargados:', sharedData.excelData.length, 'filas');
+                }
+                // Cargar PDFs desde Base64
+                if (data.data.pdfs) {
+                    sharedData.pdfs = {};
+                    for (const filename in data.data.pdfs) {
+                        const base64 = data.data.pdfs[filename];
+                        if (base64) {
+                            try {
+                                sharedData.pdfs[filename] = base64ToArrayBuffer(base64);
+                                console.log('PDF cargado:', filename);
+                            } catch (e) {
+                                console.error('Error al convertir PDF:', filename, e);
+                            }
+                        }
+                    }
+                }
+                // Actualizar la interfaz
+                noDocsMessage.style.display = 'none';
+                empleadosList.innerHTML = '';
+                historicoList.innerHTML = '';
+                if (sharedData.excelData && sharedData.excelData.length > 1) {
+                    const headers = sharedData.excelData[0];
+                    // Normalizar encabezados para encontrar los índices correctos
+                    const normalizar = t => t && t.toString().toUpperCase().replace(/[ÁÀÄÂ]/g, 'A').replace(/[ÉÈËÊ]/g, 'E').replace(/[ÍÌÏÎ]/g, 'I').replace(/[ÓÒÖÔ]/g, 'O').replace(/[ÚÙÜÛ]/g, 'U').replace(/Ñ/g, 'N').replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+                    const nombreIndex = headers.findIndex(h => normalizar(h) === 'NOMBRES Y APELLIDOS');
+                    const documentoIndex = headers.findIndex(h => normalizar(h) === 'NO DE IDENTIFICACION');
+                    const cargoIndex = headers.findIndex(h => normalizar(h) === 'CARGO');
+                    const estadoIndex = headers.findIndex(h => normalizar(h) === 'ESTADO');
+                    if (nombreIndex === -1) {
+                        console.error('Columna de nombres no encontrada');
+                        return;
+                    }
+                    // Obtener todos los empleados de la base de datos
+                    const { data: empleadosData, error: empleadosError } = await supabase
+                        .from('empleados')
+                        .select('*');
+                    if (empleadosError) {
+                        console.error('Error al obtener datos de empleados:', empleadosError);
+                        return;
+                    }
+                    // Filtrar empleados para Autorización de Documento
+                    const estadosPermitidos = ['SIN REVISION', 'PENDIENTE', 'REVISADO'];
+                    const empleadosAutorizacion = empleadosData.filter(emp => estadosPermitidos.includes((emp.estado || '').toUpperCase()));
+                    // Mostrar empleados en Autorización de Documento
+                    mostrarEmpleadosEnLista(empleadosAutorizacion, empleadosList, true);
+                    // Mostrar todos en Histórico
+                    mostrarEmpleadosEnLista(empleadosData, historicoList, false);
+                } else {
+                    empleadosList.innerHTML = '<p>No hay datos de empleados disponibles</p>';
+                    historicoList.innerHTML = '<p>No hay datos de empleados disponibles</p>';
+                }
+                // Actualizar contador de PDFs
+                const pdfCount = Object.keys(sharedData.pdfs).length;
+                const pdfCountElement = document.getElementById('confirmador-pdf-count');
+                if (pdfCountElement) {
+                    pdfCountElement.textContent = pdfCount;
+                }
+                console.log('Carga de datos completada');
+                // Asegurar que se actualiza la lista visual de PDFs
+                if (typeof updateConfirmadorPDFList === 'function') {
+                    updateConfirmadorPDFList();
+                }
+            } catch (error) {
+                console.error('Error al cargar datos del confirmador:', error);
+                if (noDocsMessage) {
+                    noDocsMessage.style.display = 'block';
+                    noDocsMessage.textContent = 'Error al cargar los datos. Por favor, intente nuevamente.';
+                }
+            }
+        }
+
+        // Función para actualizar la lista de PDFs del confirmador
+        function updateConfirmadorPDFList() {
+            const pdfListContent = document.getElementById('confirmador-pdf-list-content');
+            if (!pdfListContent) {
+                console.warn('No se encontró el contenedor #confirmador-pdf-list-content');
+                return;
+            }
+            // Bloque de prueba para descartar problemas de visibilidad
+            pdfListContent.innerHTML = '<div style="background:yellow; padding:10px; font-weight:bold;">PRUEBA DE RENDERIZADO</div>';
+            const pdfs = sharedData.pdfs;
+            const pdfCount = Object.keys(pdfs).length;
+            console.log('Intentando renderizar PDFs en updateConfirmadorPDFList:', Object.keys(pdfs));
+            if (pdfCount > 0) {
+                Object.keys(pdfs).forEach(filename => {
+                    const thumbnail = document.createElement('div');
+                    thumbnail.className = 'pdf-thumbnail';
+                    thumbnail.innerHTML = `
+                        <div style="width: 100px; height: 140px; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; border: 1px solid #ddd; cursor: pointer;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 40px; color: #666;">📄</div>
+                                <div style="font-size: 12px; color: #666;">PDF</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 5px; text-align: center; font-size: 12px;">${filename}</div>
+                    `;
+                    thumbnail.onclick = () => displayConfirmadorPDF(filename);
+                    pdfListContent.appendChild(thumbnail);
+                });
+                console.log('PDFs renderizados en la interfaz:', pdfCount);
+            } else {
+                pdfListContent.innerHTML += '<p style="text-align: center; color: #666;">No hay PDFs disponibles</p>';
+                console.log('No hay PDFs para mostrar');
+            }
+        }
+
+        // Función para mostrar PDF en el visor del confirmador
+        function displayConfirmadorPDF(filename) {
+            console.log('Mostrando PDF:', filename);
+            const pdfData = sharedData.pdfs[filename];
+            if (!pdfData) {
+                console.error('PDF no encontrado:', filename);
+                alert('Error: PDF no encontrado.');
+                return;
+            }
+
+            currentPDF = filename;
+
+            let pdfViewer = document.getElementById('pdf-viewer-modal');
+            if (!pdfViewer) {
+                pdfViewer = document.createElement('div');
+                pdfViewer.id = 'pdf-viewer-modal';
+                pdfViewer.className = 'pdf-viewer-modal';
+                document.body.appendChild(pdfViewer);
+            }
+
+            pdfViewer.innerHTML = `
+                <div class="pdf-viewer-content">
+                    <div class="pdf-viewer-header">
+                        <h3>${filename}</h3>
+                        <button onclick="closePDFViewer()" class="close-btn">×</button>
+                    </div>
+                    <div class="pdf-container" id="pdf-container-modal"></div>
+                </div>
+            `;
+
+            pdfViewer.style.display = 'flex';
+
+            const pdfBlob = new Blob([pdfData], { type: 'application/pdf' });
+            const pdfUrl = URL.createObjectURL(pdfBlob);
+            const container = document.getElementById('pdf-container-modal');
+
+            const iframe = document.createElement('iframe');
+            iframe.src = pdfUrl;
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.border = 'none';
+            container.appendChild(iframe);
+        }
+
+        function closePDFViewer() {
+            const pdfViewer = document.getElementById('pdf-viewer-modal');
+            if (pdfViewer) {
+                pdfViewer.style.display = 'none';
+            }
+        }
+
+        async function firmarPDF() {
+            try {
+                if (!currentUser || (currentUser.role !== 'DirectoraRH' && currentUser.role !== 'admin')) {
+                    alert('Solo el rol de DirectorRH puede firmar documentos.');
+                    return;
+                }
+
+                if (!currentPDF || !sharedData.pdfs[currentPDF]) {
+                    alert('Por favor, seleccione un PDF antes de firmar.');
+                    return;
+                }
+
+                if (!window.firmaUrl) {
+                    alert('Por favor, cargue una firma antes de firmar.');
+                    return;
+                }
+
+                const pdfData = sharedData.pdfs[currentPDF];
+                if (!(pdfData instanceof ArrayBuffer)) {
+                    throw new Error('Los datos del PDF no son válidos.');
+                }
+
+                // Usar la misma función de procesamiento que firmarTodosPDFs
+                const signedPdfBlob = await procesarYFirmarPDF(new Blob([pdfData], { type: 'application/pdf' }));
+                
+                // Crear URL y descargar
+                const signedFilename = `firmado_${currentPDF}`;
+                const downloadUrl = URL.createObjectURL(signedPdfBlob);
+                const downloadLink = document.createElement('a');
+                downloadLink.href = downloadUrl;
+                downloadLink.download = signedFilename;
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                URL.revokeObjectURL(downloadUrl);
+
+                alert('Documento firmado y descargado exitosamente.');
+
+            } catch (error) {
+                console.error('Error al firmar el PDF:', error);
+                alert('Error al firmar el documento: ' + error.message);
+            }
+        }
+
+        // Función para determinar la posición de la firma en contratos
+        async function determinarPosicionFirmaContrato(pdfDoc) {
+            try {
+                // Obtener la última página
+                const lastPage = await pdfDoc.getPage(pdfDoc.numPages);
+                const viewport = lastPage.getViewport({ scale: 2.0 }); // Aumentamos la escala para mejor detección
+                
+                // Crear un canvas temporal para analizar el contenido
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                // Renderizar la página con mayor calidad
+                await lastPage.render({
+                    canvasContext: context,
+                    viewport: viewport,
+                    intent: 'print'
+                }).promise;
+
+                // Obtener los datos de la imagen para detectar el QR
+                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                
+                // Intentar detectar el QR
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "dontInvert",
+                });
+                
+                if (!code || code.data !== 'insertefirma') {
+                    throw new Error('No se encontró el código QR con el texto "insertefirma"');
+                }
+
+                console.log('QR detectado:', code.location);
+
+                // Usar exactamente las coordenadas del QR detectado
+                const scale = 2.0; // Mismo valor usado en viewport
+                const calibracionY = 5; // Pequeño ajuste hacia abajo
+                const factorEscala = 1.6; // Factor para ajustar el tamaño
+
+                // Calcular dimensiones ajustadas
+                const width = (code.location.bottomRightCorner.x - code.location.topLeftCorner.x) / scale;
+                const height = (code.location.bottomRightCorner.y - code.location.topLeftCorner.y) / scale;
+                
+                // Calcular el centro del QR para mantener la firma centrada al escalar
+                const centerX = code.location.topLeftCorner.x / scale;
+                const centerY = (code.location.topLeftCorner.y / scale) + calibracionY;
+
+                // Ajustar dimensiones con el factor de escala
+                const newWidth = width * factorEscala;
+                const newHeight = height * factorEscala;
+
+                // Ajustar posición para mantener centrado
+                const adjustedX = centerX - ((newWidth - width) / 2);
+                const adjustedY = centerY - ((newHeight - height) / 2);
+
+                return {
+                    x: adjustedX,
+                    y: adjustedY,
+                    width: newWidth,
+                    height: newHeight,
+                    pageWidth: viewport.width / scale,
+                    pageHeight: viewport.height / scale
+                };
+
+            } catch (error) {
+                console.error('Error al determinar posición de firma:', error);
+                throw error;
+            }
+        }
+
+        // Función para verificar el QR específico
+        function verificarQREspecifico(data, x, y, moduleSize, width, height) {
+            // Patrón de posición del QR (7x7 módulos)
+            const FINDER_PATTERN = [
+                [1, 1, 1, 1, 1, 1, 1],
+                [1, 0, 0, 0, 0, 0, 1],
+                [1, 0, 1, 1, 1, 0, 1],
+                [1, 0, 1, 1, 1, 0, 1],
+                [1, 0, 1, 1, 1, 0, 1],
+                [1, 0, 0, 0, 0, 0, 1],
+                [1, 1, 1, 1, 1, 1, 1]
+            ];
+
+            // Verificar los tres patrones de posición
+            const positions = [
+                {x: 0, y: 0},                    // Superior izquierda
+                {x: 18 * moduleSize, y: 0},      // Superior derecha
+                {x: 0, y: 18 * moduleSize}       // Inferior izquierda
+            ];
+
+            let totalConfidence = 0;
+            let validPatterns = 0;
+
+            // Verificar cada patrón de posición
+            for (const pos of positions) {
+                let patternConfidence = 0;
+                let totalPixels = 0;
+
+                for (let py = 0; py < 7; py++) {
+                    for (let px = 0; px < 7; px++) {
+                        const pixelX = x + pos.x + px * moduleSize;
+                        const pixelY = y + pos.y + py * moduleSize;
+                        
+                        if (pixelX >= width || pixelY >= height) continue;
+
+                        const idx = (pixelY * width + pixelX) * 4;
+                        const isBlack = esPixelNegro(data, idx);
+                        
+                        // Verificar si coincide con el patrón esperado
+                        if ((FINDER_PATTERN[py][px] === 1 && isBlack) ||
+                            (FINDER_PATTERN[py][px] === 0 && !isBlack)) {
+                            patternConfidence++;
+                        }
+                        totalPixels++;
+                    }
+                }
+
+                if (totalPixels > 0) {
+                    const confidence = patternConfidence / totalPixels;
+                    if (confidence > 0.8) {
+                        validPatterns++;
+                        totalConfidence += confidence;
+                    }
+                }
+            }
+
+            // Verificar el borde blanco (quiet zone)
+            const quietZoneConfidence = verificarQuietZone(data, x, y, moduleSize * 25, width, height);
+
+            // Calcular confianza final
+            const finalConfidence = validPatterns === 3 ? 
+                (totalConfidence / 3) * 0.8 + quietZoneConfidence * 0.2 : 0;
+
+            return {
+                confidence: finalConfidence
+            };
+        }
+
+        // Función para verificar el borde blanco alrededor del QR
+        function verificarQuietZone(data, x, y, size, width, height) {
+            const QUIET_ZONE_SIZE = 4; // Tamaño del borde blanco en módulos
+            let whitePixels = 0;
+            let totalPixels = 0;
+
+            // Verificar bordes superior e inferior
+            for (let px = -QUIET_ZONE_SIZE; px < size + QUIET_ZONE_SIZE; px++) {
+                // Borde superior
+                for (let py = -QUIET_ZONE_SIZE; py < 0; py++) {
+                    const pixelX = x + px;
+                    const pixelY = y + py;
+                    if (pixelX >= 0 && pixelX < width && pixelY >= 0 && pixelY < height) {
+                        const idx = (pixelY * width + pixelX) * 4;
+                        if (!esPixelNegro(data, idx)) whitePixels++;
+                        totalPixels++;
+                    }
+                }
+                // Borde inferior
+                for (let py = size; py < size + QUIET_ZONE_SIZE; py++) {
+                    const pixelX = x + px;
+                    const pixelY = y + py;
+                    if (pixelX >= 0 && pixelX < width && pixelY >= 0 && pixelY < height) {
+                        const idx = (pixelY * width + pixelX) * 4;
+                        if (!esPixelNegro(data, idx)) whitePixels++;
+                        totalPixels++;
+                    }
+                }
+            }
+
+            // Verificar bordes izquierdo y derecho
+            for (let py = 0; py < size; py++) {
+                // Borde izquierdo
+                for (let px = -QUIET_ZONE_SIZE; px < 0; px++) {
+                    const pixelX = x + px;
+                    const pixelY = y + py;
+                    if (pixelX >= 0 && pixelX < width && pixelY >= 0 && pixelY < height) {
+                        const idx = (pixelY * width + pixelX) * 4;
+                        if (!esPixelNegro(data, idx)) whitePixels++;
+                        totalPixels++;
+                    }
+                }
+                // Borde derecho
+                for (let px = size; px < size + QUIET_ZONE_SIZE; px++) {
+                    const pixelX = x + px;
+                    const pixelY = y + py;
+                    if (pixelX >= 0 && pixelX < width && pixelY >= 0 && pixelY < height) {
+                        const idx = (pixelY * width + pixelX) * 4;
+                        if (!esPixelNegro(data, idx)) whitePixels++;
+                        totalPixels++;
+                    }
+                }
+            }
+
+            return totalPixels > 0 ? whitePixels / totalPixels : 0;
+        }
+
+        // Función auxiliar para determinar si un pixel es negro
+        function esPixelNegro(data, idx) {
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+            const brightness = (r + g + b) / 3;
+            return brightness < 128;
+        }
+        
+        // Función para buscar PDFs (Confirmador)
+        function searchConfirmadorPDFs(button) {
+            const searchContainer = button.closest('.pdf-search-container');
+            const searchInput = document.getElementById('confirmador-search-input-pdf');
+            if (!searchInput) return;
+            
+            const searchTerm = searchInput.value.toLowerCase();
+            const pdfListContent = searchContainer.closest('.pdf-section').querySelector('.pdf-content');
+            const thumbnails = pdfListContent.querySelectorAll('.pdf-thumbnail');
+            
+            thumbnails.forEach(thumbnail => {
+                const pdfName = thumbnail.querySelector('div:last-child').textContent.toLowerCase();
+                thumbnail.style.display = pdfName.includes(searchTerm) ? 'block' : 'none';
+            });
+        }
+
+        // Función para mostrar una fila del Excel
+        function displayExcelRow() {
+            if (!sharedData.excelData || sharedData.excelData.length <= 1) {
+                document.getElementById('excel-row-content').innerHTML = '<p>No hay datos disponibles</p>';
+                return;
+            }
+            
+            const headers = sharedData.excelData[0];
+            const rowIndex = sharedData.filteredRows[sharedData.currentRowIndex - 1];
+            const rowData = sharedData.excelData[rowIndex] || [];
+            
+            const rowContent = document.getElementById('excel-row-content');
+            rowContent.innerHTML = '';
+
+            // Definir las opciones para los campos de selección
+            const selectOptions = {
+                'TIPO DOCUMENTO IDENTIFICACIÓN': ['CC', 'PT', 'CE'],
+                'CLAUSURA TERCERA': ['S', 'P'],
+                'PARÁGRAFO DIRECCIÓN MANEJO Y CONFIANZA': ['S', 'A', 'P'],
+                'NIVEL DE ESTUDIO': ['SIN ESCOLARIDAD', 'PRIMARIA', 'BACHILLER', 'TECNICO', 'TÉCNOLOGO', 'PROFESIONAL', 'MAESTRÍA', 'DOCTORADO', 'P'],
+                'TARJETA-LICENCIA-MATRICULA-COPNIA': ['T', 'L', 'M', 'C', 'A'],
+                'COMPETENCIAS TÉCNICAS CUMPLE/NO CUMPLE/NO APLICA': ['S', 'A', 'P'],
+                'LICENCIA DE CONDUCCIÓN': ['S', 'P', 'A'],
+                'EXPERIENCIA LABORAL': ['S', 'A', 'P'],
+                'SIG-GR-F-42 SOLICITUD DE PERSONAL': ['S', 'P'],
+                'CERTIFICADO DE RESIDENCIA': ['S', 'A', 'P'],
+                'POSTULACIÓN APE': ['S', 'P'],
+                'APROBACIÓN SSTA CARGOS': ['S', 'A', 'P'],
+                'APROBACIÓN SSTA EMO': ['S', 'A', 'P'],
+                'SAGRILAFT': ['S', 'P'],
+                'ARL': ['S', 'P'],
+                'CUENTA BANCARIA': ['S', 'P'],
+                'SEXO': ['M', 'F'],
+                'ESTADO CIVIL': ['S', 'U', 'C', 'D'],
+                'CONFIRMACIÓN CONTRATACIÓN GERENCIA OPERACIONES': ['S', 'P'],
+                'ESTADO': ['SIN REVISION', 'PENDIENTE', 'REVISADO', 'AUTORIZADO'],
+                'SIG-GR-F-06 INDUCCIÓN': ['S', 'P'],
+                'SIG-GR-F-31 FUNCIONES': ['S', 'P'],
+                'SIG-GR-F-27 INFORMACIÓN TRABAJADOR': ['S', 'P'],
+                'SIG-GR-F-04 DOTACIÓN Y EPPS': ['S', 'P'],
+                'FORMATO MANEJO DE IMAGEN': ['S', 'P'],
+                'AUTORIZACION MEDIOS ELECTRÓNICOS': ['S', 'P'],
+                'SIG-GR-F-01 ENTREVISTA': ['S', 'P', 'A'],
+                'SIG-GR-F-03 ASIGNACIÓN ROL': ['S', 'P', 'A'],
+                'SIG-GR-F-37 HV CONDUCTORES': ['S', 'P', 'A'],
+                'SIG-GR-F-61 PERFIL DEL CARGO, FUNCIONES Y RESPONSABILIDADES': ['S', 'P'],
+                'HV DIGITAL COMPLETA SEGÚN SIG-GR-F-32': ['S', 'P']
+            };
+
+            // Campos de texto libre
+            const textAreas = [
+                'TITULO',
+                'CURSOS',
+                'OBSERVACIONES',
+                'EPS',
+                'AFP',
+                'CESANTIAS',
+                'BANCO',
+                'FECHA DE EXPEDICIÓN DOC. IDENTIDAD',
+                'COMPETENCIAS TÉCNICAS'
+            ];
+
+            headers.forEach((header, index) => {
+                const div = document.createElement('div');
+                div.className = 'form-group';
+                let value = String(rowData[index] || '').trim();
+                let inputHtml = '';
+                
+                if (selectOptions[header]) {
+                    // Campo de selección
+                    inputHtml = `
+                        <select class="form-control" 
+                                data-row="${rowIndex}" 
+                                data-col="${index}"
+                                onchange="actualizarValorEnSupabase(this)">
+                            <option value="">Seleccione...</option>
+                            ${selectOptions[header].map(opt => 
+                                `<option value="${opt}" ${value === opt ? 'selected' : ''}>${opt}</option>`
+                            ).join('')}
+                        </select>`;
+                } else if (textAreas.includes(header)) {
+                    // Campo de texto largo
+                    inputHtml = `
+                        <textarea class="form-control" 
+                                 data-row="${rowIndex}" 
+                                 data-col="${index}"
+                                 onchange="actualizarValorEnSupabase(this)"
+                                 rows="3">${value}</textarea>`;
+                } else {
+                    // Campo de texto normal
+                    inputHtml = `
+                        <input type="text" 
+                               value="${value}"
+                               data-row="${rowIndex}"
+                               data-col="${index}"
+                               onchange="actualizarValorEnSupabase(this)">`;
+                }
+                div.innerHTML = `
+                    <label>${header}</label>
+                    ${inputHtml}
+                `;
+                rowContent.appendChild(div);
+            });
+            
+            // Actualizar navegación
+            document.getElementById('current-row-index').textContent = sharedData.currentRowIndex;
+            document.getElementById('prev-row-btn').disabled = sharedData.currentRowIndex === 1;
+            document.getElementById('next-row-btn').disabled = sharedData.currentRowIndex === sharedData.filteredRows.length;
+        }
+
+        // Nueva función para actualizar valores en Supabase
+        async function actualizarValorEnSupabase(element) {
+            try {
+                const row = parseInt(element.dataset.row);
+                const col = parseInt(element.dataset.col);
+                const value = String(element.value).trim();
+                const headers = sharedData.excelData[0];
+                const header = headers[col];
+
+                // Actualizar el valor en sharedData
+                        sharedData.excelData[row][col] = value;
+
+                // Función para normalizar encabezados
+                function normalizarTexto(texto) {
+                    return texto
+                        .toUpperCase()
+                        .replace(/[ÁÀÄÂ]/g, 'A')
+                        .replace(/[ÉÈËÊ]/g, 'E')
+                        .replace(/[ÍÌÏÎ]/g, 'I')
+                        .replace(/[ÓÒÖÔ]/g, 'O')
+                        .replace(/[ÚÙÜÛ]/g, 'U')
+                        .replace(/Ñ/g, 'N')
+                        .replace(/[^A-Z0-9 ]/g, '')
+                        .replace(/\s+/g, ' ')
+                        .replace(/\r?\n|\r/g, ' ')
+                        .trim();
+                }
+
+                // Mapeo de nombres de columnas de Excel a nombres en la base de datos (normalizado)
+                const columnMapping = {
+                    'ITEM': 'item',
+                    'TIPO CONTRATO': 'tipo_contrato',
+                    'NOMBRES Y APELLIDOS': 'nombres_y_apellidos',
+                    'TIPO DOCUMENTO IDENTIFICACION': 'tipo_documento_identificacion',
+                    'NO DE IDENTIFICACION': 'no_de_identificacion',
+                    'LUGAR EXPEDICION DOCUMENTO IDENTIFICACION': 'lugar_expedicion_documento_identificacion',
+                    'FECHA DE NACIMIENTO': 'fecha_de_nacimiento',
+                    'LUGAR DE NACIMIENTO': 'lugar_de_nacimiento',
+                    'NACIONALIDAD': 'nacionalidad',
+                    'DIRECCION DE RESIDENCIA': 'direccion_de_residencia',
+                    'MUNICIPIO DEPARTAMENTO RESIDENCIA': 'municipio_departamento_residencia',
+                    'TELEFONO CELULAR': 'telefono_celular',
+                    'CORREO ELECTRONICO': 'correo_electronico',
+                    'CARGO': 'cargo',
+                    'CATEGORIA TABLA': 'categoria_tabla',
+                    'PROYECTO Y O ORDEN DE SERVICIO': 'proyecto_y_o_orden_de_servicio',
+                    'OBRA O LABOR CONTRATADA': 'obra_o_labor_contratada',
+                    'LUGAR DE EJECUCION': 'lugar_de_ejecucion',
+                    'FECHA DE INICIO': 'fecha_de_inicio',
+                    'PERIODO DE PRUEBA': 'periodo_de_prueba',
+                    'FECHA TERMINACION': 'fecha_terminacion',
+                    'SALARIO': 'salario',
+                    'SALARIO LETRAS': 'salario_letras',
+                    'CLAUSURA TERCERA': 'clausura_tercera',
+                    'HORARIO LABORAL': 'horario_laboral',
+                    'PARAGRAFO DIRECCIÓN MANEJO Y CONFIANZA': 'paragrafo_direccion_manejo_y_confianza',
+                    'FECHA FIRMA CONTRATO': 'fecha_firma_contrato',
+                    'NIVEL DE ESTUDIO': 'nivel_de_estudio',
+                    'TITULO': 'titulo',
+                    'TARJETA LICENCIA MATRICULA COPNIA': 'tarjeta_licencia_matricula_copnia',
+                    'COMPETENCIAS TECNICAS CUMPLE NO CUMPLE NO APLICA': 'competencias_tecnicas_cumple_no_cumple_no_aplica',
+                    'CURSOS': 'cursos',
+                    'LICENCIA DE CONDUCCION': 'licencia_de_conduccion',
+                    'EXPERIENCIA LABORAL': 'experiencia_laboral',
+                    'SIG GR F 42 SOLICITUD DE PERSONAL': 'sig_gr_f_42_solicitud_de_personal',
+                    'CERTIFICADO DE RESIDENCIA': 'certificado_de_residencia',
+                    'POSTULACION APE': 'postulacion_ape',
+                    'APROBACION SSTA CARGOS': 'aprobacion_ssta_cargos',
+                    'APROBACION SSTA EMO': 'aprobacion_ssta_emo',
+                    'SAGRILAFT': 'sagrilaft',
+                    'ARL': 'arl',
+                    'EPS': 'eps',
+                    'AFP': 'afp',
+                    'CESANTIAS': 'cesantias',
+                    'CUENTA BANCARIA': 'cuenta_bancaria',
+                    'BANCO': 'banco',
+                    'FECHA EXPEDICION DOC IDENTIDAD': 'fecha_expedicion_doc_identidad',
+                    'SEXO': 'sexo',
+                    'ESTADO CIVIL': 'estado_civil',
+                    'CONFIRMACION CONTRATACION GERENCIA OPERACIONES': 'confirmacion_contratacion_gerencia_operaciones',
+                    'OBSERVACIONES': 'observaciones',
+                    'ESTADO': 'estado',
+                    'SIG GR F 06 INDUCCION': 'sig_gr_f_06_induccion',
+                    'SIG GR F 31 FUNCIONES': 'sig_gr_f_31_funciones',
+                    'SIG GR F 27 INFORMACION TRABAJADOR': 'sig_gr_f_27_informacion_trabajador',
+                    'SIG GR F 04 DOTACION Y EPPS': 'sig_gr_f_04_dotacion_y_epps',
+                    'FORMATO MANEJO DE IMAGEN': 'formato_manejo_de_imagen',
+                    'AUTORIZACION MEDIOS ELECTRONICOS': 'autorizacion_medios_electronicos',
+                    'SIG GR F 01 ENTREVISTA': 'sig_gr_f_01_entrevista',
+                    'SIG GR F 03 ASIGNACION ROL': 'sig_gr_f_03_asignacion_rol',
+                    'SIG GR F 37 HV CONDUCTORES': 'sig_gr_f_37_hv_conductores',
+                    'SIG GR F 61 PERFIL DEL CARGO FUNCIONES Y RESPONSABILIDADES': 'sig_gr_f_61_perfil_del_cargo_funciones_y_responsabilidades',
+                    'HV DIGITAL COMPLETA SEGUN SIG GR F 32': 'hv_digital_completa_segun_sig_gr_f_32',
+                    'PDF ASOCIADO': 'pdf_asociado'
+                };
+
+                // Normalizar el encabezado antes de buscar el mapeo
+                const headerNorm = normalizarTexto(header);
+                const dbColumn = columnMapping[headerNorm];
+                if (!dbColumn) {
+                    console.warn(`No se encontró mapeo para la columna: ${header}`);
+                    return;
+                }
+
+                // Obtener el número de identificación del empleado
+                const documentoIndex = headers.findIndex(h => normalizarTexto(h) === 'NO DE IDENTIFICACION');
+                const noIdentificacion = sharedData.excelData[row][documentoIndex];
+
+                if (!noIdentificacion) {
+                    console.error('No se encontró el número de identificación del empleado');
+                    return;
+                }
+
+                // Preparar el objeto de actualización
+                const updateData = {};
+                updateData[dbColumn] = value;
+
+                // Si es un campo de fecha, formatearlo
+                if (dbColumn.includes('fecha_')) {
+                    updateData[dbColumn] = formatearFecha(value);
+                }
+
+                // Actualizar en Supabase
+                const { error } = await supabase
+                    .from('empleados')
+                    .update(updateData)
+                    .eq('no_de_identificacion', noIdentificacion);
+
+                if (error) {
+                    console.error('Error al actualizar en Supabase:', error);
+                    alert('Error al guardar los cambios: ' + error.message);
+                } else {
+                    console.log('Valor actualizado correctamente en Supabase');
+                }
+
+                // Guardar también en shared_data
+                await saveToSupabase();
+
+            } catch (error) {
+                console.error('Error al actualizar valor:', error);
+                alert('Error al guardar los cambios: ' + error.message);
+            }
+        }
+
+        // Función para navegar a la fila anterior
+        function prevRow() {
+            if (sharedData.currentRowIndex > 1) {
+                sharedData.currentRowIndex--;
+                displayExcelRow();
+            }
+        }
+
+        // Función para navegar a la siguiente fila
+        function nextRow() {
+            if (sharedData.currentRowIndex < sharedData.filteredRows.length) {
+                sharedData.currentRowIndex++;
+                displayExcelRow();
+            }
+        }
+
+        // Función para buscar en las filas
+        function searchRows() {
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            sharedData.filteredRows = [];
+            
+            for (let i = 1; i < sharedData.excelData.length; i++) {
+                const row = sharedData.excelData[i];
+                if (row && row.some(cell => (cell || '').toString().toLowerCase().includes(searchTerm))) {
+                    sharedData.filteredRows.push(i);
+                }
+            }
+            
+            sharedData.currentRowIndex = sharedData.filteredRows.length > 0 ? 1 : 0;
+            displayExcelRow();
+            
+            document.getElementById('total-rows').textContent = sharedData.filteredRows.length;
+            
+            if (sharedData.filteredRows.length === 0) {
+                document.getElementById('excel-row-content').innerHTML = '<p>No se encontraron resultados</p>';
+            }
+        }
+
+        // Función para descargar el Excel actualizado
+        async function downloadExcel() {
+            try {
+                // Consultar todos los empleados desde Supabase
+                const { data, error } = await supabase.from('empleados').select('*');
+                if (error) {
+                    alert('Error al obtener los empleados: ' + error.message);
+                    return;
+                }
+                if (!data || data.length === 0) {
+                    alert('No hay empleados almacenados.');
+                    return;
+                }
+
+                // Función para formatear fechas
+                function formatearFechaDDMMAAAA(fecha) {
+                    if (!fecha) return '';
+                    
+                    // Si ya está en formato DD/MM/AAAA
+                    if (/^\d{2}\/\d{2}\/\d{4}$/.test(fecha)) return fecha;
+                    
+                    // Si está en formato YYYY-MM-DD
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+                        const [year, month, day] = fecha.split('-');
+                        return `${day}/${month}/${year}`;
+                    }
+                    
+                    // Si es un número de Excel (fecha serial)
+                    if (!isNaN(fecha)) {
+                        const date = new Date((fecha - 25569) * 86400 * 1000);
+                        const day = String(date.getDate()).padStart(2, '0');
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const year = date.getFullYear();
+                        return `${day}/${month}/${year}`;
+                    }
+                    
+                    // Si es una fecha válida en cualquier otro formato
+                    const date = new Date(fecha);
+                    if (!isNaN(date.getTime())) {
+                        const day = String(date.getDate()).padStart(2, '0');
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const year = date.getFullYear();
+                        return `${day}/${month}/${year}`;
+                    }
+                    
+                    return fecha; // Si no se puede convertir, devolver el valor original
+                }
+
+                // Definir el orden de las columnas según el Excel original
+                const columnOrder = [
+                    'item',
+                    'tipo_contrato',
+                    'nombres_y_apellidos',
+                    'tipo_documento_identificacion',
+                    'no_de_identificacion',
+                    'lugar_expedicion_documento_identificacion',
+                    'fecha_de_nacimiento',
+                    'lugar_de_nacimiento',
+                    'nacionalidad',
+                    'direccion_de_residencia',
+                    'municipio_departamento_residencia',
+                    'telefono_celular',
+                    'correo_electronico',
+                    'cargo',
+                    'categoria_tabla',
+                    'proyecto_y_o_orden_de_servicio',
+                    'obra_o_labor_contratada',
+                    'lugar_de_ejecucion',
+                    'fecha_de_inicio',
+                    'periodo_de_prueba',
+                    'fecha_terminacion',
+                    'salario',
+                    'salario_letras',
+                    'clausura_tercera',
+                    'horario_laboral',
+                    'paragrafo_direccion_manejo_y_confianza',
+                    'fecha_firma_contrato',
+                    'nivel_de_estudio',
+                    'titulo',
+                    'tarjeta_licencia_matricula_copnia',
+                    'competencias_tecnicas_cumple_no_cumple_no_aplica',
+                    'cursos',
+                    'licencia_de_conduccion',
+                    'experiencia_laboral',
+                    'sig_gr_f_42_solicitud_de_personal',
+                    'certificado_de_residencia',
+                    'postulacion_ape',
+                    'aprobacion_ssta_cargos',
+                    'aprobacion_ssta_emo',
+                    'sagrilaft',
+                    'arl',
+                    'eps',
+                    'afp',
+                    'cesantias',
+                    'cuenta_bancaria',
+                    'banco',
+                    'fecha_expedicion_doc_identidad',
+                    'sexo',
+                    'estado_civil',
+                    'confirmacion_contratacion_gerencia_operaciones',
+                    'observaciones',
+                    'estado',
+                    'sig_gr_f_06_induccion',
+                    'sig_gr_f_31_funciones',
+                    'sig_gr_f_27_informacion_trabajador',
+                    'sig_gr_f_04_dotacion_y_epps',
+                    'formato_manejo_de_imagen',
+                    'autorizacion_medios_electronicos',
+                    'sig_gr_f_01_entrevista',
+                    'sig_gr_f_03_asignacion_rol',
+                    'sig_gr_f_37_hv_conductores',
+                    'sig_gr_f_61_perfil_del_cargo_funciones_y_responsabilidades',
+                    'hv_digital_completa_segun_sig_gr_f_32'
+                ];
+
+                // Lista de campos que contienen fechas
+                const camposFecha = [
+                    'fecha_de_nacimiento',
+                    'fecha_de_inicio',
+                    'fecha_terminacion',
+                    'fecha_firma_contrato',
+                    'fecha_expedicion_doc_identidad'
+                ];
+
+                // Convertir los nombres de columnas a formato legible
+                const headers = columnOrder.map(col => {
+                    return col
+                        .split('_')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ')
+                        .replace(/([a-z])([A-Z])/g, '$1 $2')
+                        .toUpperCase();
+                });
+
+                // Preparar los datos en el orden correcto y formatear fechas
+                const rows = data.map(obj => 
+                    columnOrder.map(key => {
+                        let value = obj[key] || '';
+                        // Si el campo es una fecha, formatearlo
+                        if (camposFecha.includes(key)) {
+                            return formatearFechaDDMMAAAA(value);
+                        }
+                        // Si es correo electrónico, eliminar todos los espacios
+                        if (key === 'correo_electronico') {
+                            return value.replace(/\s+/g, '').trim();
+                        }
+                        return value;
+                    })
+                );
+
+                // Crear el libro de trabajo y la hoja
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+                // Configurar el ancho de las columnas
+                const columnWidths = headers.map(header => ({
+                    wch: Math.max(20, header.length * 1.2)
+                }));
+                ws['!cols'] = columnWidths;
+
+                // Aplicar estilos a los encabezados
+                const headerStyle = {
+                    font: { bold: true, color: { rgb: "FFFFFF" } },
+                    fill: { fgColor: { rgb: "4CAF50" } },
+                    alignment: { horizontal: "center", vertical: "center", wrapText: true }
+                };
+
+                // Aplicar estilos a las celdas de datos
+                const dataStyle = {
+                    alignment: { vertical: "center", wrapText: true },
+                    border: {
+                        top: { style: "thin" },
+                        bottom: { style: "thin" },
+                        left: { style: "thin" },
+                        right: { style: "thin" }
+                    }
+                };
+
+                // Aplicar estilos a todas las celdas
+                for (let i = 0; i < rows.length + 1; i++) {
+                    for (let j = 0; j < headers.length; j++) {
+                        const cellRef = XLSX.utils.encode_cell({ r: i, c: j });
+                        if (!ws[cellRef]) ws[cellRef] = { v: "" };
+                        
+                        if (i === 0) {
+                            // Estilos para encabezados
+                            ws[cellRef].s = headerStyle;
+                        } else {
+                            // Estilos para datos
+                            ws[cellRef].s = dataStyle;
+                        }
+                    }
+                }
+
+                // Establecer el rango de la hoja
+                ws['!ref'] = XLSX.utils.encode_range({
+                    s: { c: 0, r: 0 },
+                    e: { c: headers.length - 1, r: rows.length }
+                });
+
+                // Añadir la hoja al libro
+                XLSX.utils.book_append_sheet(wb, ws, 'Empleados');
+
+                // Descargar el archivo
+                const wbout = XLSX.write(wb, { 
+                    bookType: 'xlsx', 
+                    type: 'array',
+                    cellStyles: true
+                });
+                
+                const blob = new Blob([wbout], { type: 'application/octet-stream' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'empleados_supabase.xlsx';
+                a.click();
+                window.URL.revokeObjectURL(url);
+
+            } catch (error) {
+                console.error('Error al descargar el Excel desde Supabase:', error);
+                alert('Error al descargar el archivo Excel desde Supabase');
+            }
+        }
+
+        // Función para mostrar los empleados en la lista
+        function displayEmpleadosList() {
+            const empleadosList = document.getElementById('empleados-list');
+            if (!empleadosList || !sharedData.excelData || sharedData.excelData.length <= 1) return;
+
+            empleadosList.innerHTML = '';
+            const headers = sharedData.excelData[0];
+            const nombreIndex = headers.indexOf('NOMBRES Y APELLIDOS');
+            const estadoIndex = headers.indexOf('ESTADO');
+
+            for (let i = 1; i < sharedData.excelData.length; i++) {
+                const row = sharedData.excelData[i];
+                if (!row) continue;
+
+                const estado = row[estadoIndex] || 'SIN REVISION';
+                const empleadoCard = document.createElement('div');
+                empleadoCard.className = 'empleado-card';
+                empleadoCard.classList.add(estado.toLowerCase().replace(' ', '-'));
+                empleadoCard.innerHTML = `
+                    <div class="empleado-nombre">${row[nombreIndex] || 'Sin nombre'}</div>
+                    <div class="empleado-estado">${estado}</div>
+                `;
+                empleadoCard.onclick = () => showEmpleadoDetails(i);
+                empleadosList.appendChild(empleadoCard);
+            }
+        }
+
+        // Función para convertir ArrayBuffer a Base64
+        function arrayBufferToBase64(buffer) {
+            if (!buffer) throw new Error('Buffer vacío');
+            let bytes;
+            if (buffer instanceof ArrayBuffer) {
+                bytes = new Uint8Array(buffer);
+            } else if (ArrayBuffer.isView(buffer)) {
+                bytes = new Uint8Array(buffer.buffer);
+            } else {
+                throw new Error('No es un ArrayBuffer ni un TypedArray');
+            }
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return window.btoa(binary);
+        }
+
+        // Función para convertir Base64 a ArrayBuffer
+        function base64ToArrayBuffer(base64) {
+            const binary_string = window.atob(base64);
+            const len = binary_string.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binary_string.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        // Función de inicio de sesión
+        async function login() {
+            try {
+                const email = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+                const loginError = document.getElementById('login-error');
+                
+                // Iniciar sesión con Supabase Auth
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email,
+                    password
+                });
+
+                if (error) {
+                    loginError.textContent = 'Usuario o contraseña incorrectos';
+                    loginError.style.display = 'block';
+                    return;
+                }
+
+                // Obtener el perfil y el rol
+                const { data: profileData, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('role')
+                    .eq('id', data.user.id)
+                    .single();
+
+                if (profileError || !profileData) {
+                    loginError.textContent = 'No se pudo obtener el rol del usuario';
+                    loginError.style.display = 'block';
+                    return;
+                }
+
+                currentUser = {
+                    id: data.user.id,
+                    email: data.user.email,
+                    role: profileData.role
+                };
+
+                // Ocultar formulario de login
+                document.getElementById('login-form').style.display = 'none';
+                loginError.style.display = 'none';
+
+                if (currentUser.role === 'admin') {
+                    document.getElementById('admin-dashboard').style.display = 'block';
+                } else if (currentUser.role === 'RH') {
+                    document.getElementById('revisor-dashboard').style.display = 'block';
+                    showTab('comparison-tab');
+                    loadExistingData();
+                } else if (currentUser.role === 'DirectoraRH') {
+                    const confirmadorDashboard = document.getElementById('confirmador-dashboard');
+                    confirmadorDashboard.style.display = 'block';
+                    await loadConfirmadorData();
+                    initRealtimeSubscription();
+                    await cargarFirmaDirectora();
+                } else {
+                    alert('Rol no reconocido. Contacte al administrador.');
+                }
+            } catch (error) {
+                console.error('Error durante el inicio de sesión:', error);
+                const loginError = document.getElementById('login-error');
+                loginError.textContent = 'Error al iniciar sesión. Por favor, intente nuevamente.';
+                loginError.style.display = 'block';
+            }
+        }
+
+        // Función para cerrar sesión
+        async function logout() {
+            try {
+                if (currentUser && supabase) {
+                    try {
+                        await supabase.channel('online-users').unsubscribe();
+                        await supabase.channel('document-changes').unsubscribe();
+                    } catch (error) {
+                        console.error('Error al desconectar de Supabase:', error);
+                    }
+                }
+            } finally {
+                currentUser = null;
+                document.getElementById('login-form').style.display = 'block';
+                document.getElementById('admin-dashboard').style.display = 'none';
+                document.getElementById('revisor-dashboard').style.display = 'none';
+                document.getElementById('confirmador-dashboard').style.display = 'none';
+                document.getElementById('username').value = '';
+                document.getElementById('password').value = '';
+            }
+        }
+
+        // Función para mostrar pestañas
+        function showTab(tabId) {
+            console.log('Mostrando tab:', tabId);
+            const tabContents = document.getElementsByClassName('tab-content');
+            for (let i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove('active');
+                tabContents[i].style.display = 'none';
+            }
+            
+            const selectedTab = document.getElementById(tabId);
+            if (selectedTab) {
+                selectedTab.classList.add('active');
+                selectedTab.style.display = 'block';
+                
+                // Si es el tab del confirmador, cargar los datos
+                if (tabId === 'confirmar-comparison-tab') {
+                    loadConfirmadorData();
+                }
+            }
+        }
+
+        // Función para inicializar la suscripción a cambios en tiempo real
+        function initRealtimeSubscription() {
+            if (currentUser && (currentUser.role === 'confirmador' || currentUser.role === 'admin')) {
+                supabase
+                    .channel('shared_data_changes')
+                    .on('postgres_changes', 
+                        {
+                            event: '*',
+                            schema: 'public',
+                            table: 'shared_data'
+                        },
+                        (payload) => {
+                            console.log('Cambios detectados en Supabase');
+                            loadConfirmadorData();
+                        }
+                    )
+                    .subscribe();
+            }
+        }
+
+        // Función para aprobar todos los documentos
+        async function aprobarTodosDocumentos() {
+            try {
+                // Verificar si el usuario tiene permisos
+                if (!currentUser || currentUser.role !== 'confirmador') {
+                    alert('Solo los autorizadores pueden aprobar documentos.');
+                    return;
+                }
+
+                // Verificar firma
+                if (!signatureData) {
+                    alert('Por favor, cargue una firma antes de aprobar los documentos');
+                    return;
+                }
+
+                // Verificar si hay documentos para aprobar
+                if (!sharedData.excelData || sharedData.excelData.length <= 1) {
+                    alert('No hay documentos para aprobar');
+                    return;
+                }
+
+                const headers = sharedData.excelData[0];
+                const estadoIndex = headers.indexOf('ESTADO');
+                const pdfIndex = headers.indexOf('PDF_ASOCIADO');
+
+                // Recopilar documentos pendientes
+                const pendingDocs = [];
+                for (let i = 1; i < sharedData.excelData.length; i++) {
+                    const row = sharedData.excelData[i];
+                    if (row && row[estadoIndex] === 'PENDIENTE' && row[pdfIndex]) {
+                        pendingDocs.push({
+                            rowIndex: i,
+                            pdfName: row[pdfIndex]
+                        });
+                    }
+                }
+
+                if (pendingDocs.length === 0) {
+                    alert('No hay documentos pendientes para aprobar');
+                    return;
+                }
+
+                // Procesar cada PDF
+                const zip = new JSZip();
+                for (const doc of pendingDocs) {
+                    try {
+                        const pdfData = sharedData.pdfs[doc.pdfName];
+                        if (!pdfData) continue;
+
+                        // Cargar el PDF
+                        const pdfDoc = await pdfjsLib.getDocument(pdfData).promise;
+                        const numPages = pdfDoc.numPages;
+
+                        // Crear nuevo documento PDF con firma
+                        const { jsPDF } = window.jspdf;
+                        const newPdf = new jsPDF();
+
+                        // Añadir la firma en la última página
+                        const img = new Image();
+                        img.src = signatureData;
+                        await new Promise((resolve) => { img.onload = resolve; });
+                        
+                        newPdf.addImage(
+                            img, 
+                            'PNG', 
+                            newPdf.internal.pageSize.width - 70, 
+                            newPdf.internal.pageSize.height - 60, 
+                            50, 
+                            30
+                        );
+
+                        // Añadir al ZIP
+                        const pdfBytes = newPdf.output('arraybuffer');
+                        zip.file(`firmado_${doc.pdfName}`, pdfBytes);
+
+                        // Actualizar estado en Excel
+                        sharedData.excelData[doc.rowIndex][estadoIndex] = 'AUTORIZADO';
+                    } catch (error) {
+                        console.error(`Error al procesar PDF ${doc.pdfName}:`, error);
+                    }
+                }
+
+                // Añadir Excel actualizado al ZIP
+                const workbook = XLSX.utils.book_new();
+                const worksheet = XLSX.utils.aoa_to_sheet(sharedData.excelData);
+                XLSX.utils.book_append_sheet(workbook, worksheet, 'Documentos');
+                const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+                zip.file('documentos_actualizados.xlsx', excelBuffer);
+
+                // Generar y descargar ZIP
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                const url = window.URL.createObjectURL(zipBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'documentos_aprobados.zip';
+                a.click();
+                window.URL.revokeObjectURL(url);
+
+                // Guardar cambios en Supabase
+                await saveToSupabase();
+
+                // Actualizar interfaz
+                document.getElementById('estado-message').textContent = 'Estado: Documentos autorizados y descargados exitosamente';
+                alert('Todos los documentos han sido aprobados y descargados exitosamente');
+
+            } catch (error) {
+                console.error('Error al aprobar los documentos:', error);
+                alert('Error al aprobar los documentos: ' + error.message);
+            }
+        }
+
+        // Función para actualizar el estado del documento en el Excel según el nombre del PDF
+        function updateDocumentStatus(pdfName, nuevoEstado) {
+            if (!sharedData.excelData) return;
+            const headers = sharedData.excelData[0];
+            const pdfIndex = headers.indexOf('PDF_ASOCIADO');
+            const estadoIndex = headers.indexOf('ESTADO');
+            for (let i = 1; i < sharedData.excelData.length; i++) {
+                const row = sharedData.excelData[i];
+                if (row && row[pdfIndex] === pdfName) {
+                    row[estadoIndex] = nuevoEstado;
+                    break;
+                }
+            }
+        }
+
+        // Función para clonar un ArrayBuffer
+        function cloneArrayBuffer(buffer) {
+            if (!buffer) return buffer;
+            return buffer.slice(0);
+        }
+
+        // Función para convertir fechas a formato YYYY-MM-DD
+        function formatearFecha(valor) {
+            if (!valor) return null;
+            // Si ya es formato YYYY-MM-DD
+            if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) return valor;
+            // Si es formato DD/MM/YYYY
+            if (/^\d{2}\/\d{2}\/\d{4}$/.test(valor)) {
+                const [d, m, y] = valor.split('/');
+                return `${y}-${m}-${d}`;
+            }
+            // Si es un número de Excel (fecha serial)
+            if (!isNaN(valor)) {
+                const date = new Date((valor - 25569) * 86400 * 1000);
+                return date.toISOString().split('T')[0];
+            }
+            return valor;
+        }
+
+        // Función para cargar y actualizar datos del Excel en la tabla empleados
+        async function cargarExcelASupabase(excelData) {
+            // Función para normalizar encabezados
+            function normalizarEncabezado(texto) {
+                return String(texto)
+                    .toUpperCase()
+                    .replace(/[ÁÀÄÂ]/g, 'A')
+                    .replace(/[ÉÈËÊ]/g, 'E')
+                    .replace(/[ÍÌÏÎ]/g, 'I')
+                    .replace(/[ÓÒÖÔ]/g, 'O')
+                    .replace(/[ÚÙÜÛ]/g, 'U')
+                    .replace(/Ñ/g, 'N')
+                    .replace(/[^A-Z0-9]/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+            }
+            // Mapeo robusto: claves normalizadas
+            const mapeoColumnas = {
+                'ITEM': 'item',
+                'TIPO CONTRATO': 'tipo_contrato',
+                'NOMBRES Y APELLIDOS': 'nombres_y_apellidos',
+                'TIPO DOCUMENTO IDENTIFICACION': 'tipo_documento_identificacion',
+                'NO DE IDENTIFICACION': 'no_de_identificacion',
+                'LUGAR EXPEDICION DOCUMENTO IDENTIFICACION': 'lugar_expedicion_documento_identificacion',
+                'FECHA DE NACIMIENTO': 'fecha_de_nacimiento',
+                'LUGAR DE NACIMIENTO': 'lugar_de_nacimiento',
+                'NACIONALIDAD': 'nacionalidad',
+                'DIRECCION DE RESIDENCIA': 'direccion_de_residencia',
+                'MUNICIPIO DEPARTAMENTO RESIDENCIA': 'municipio_departamento_residencia',
+                'TELEFONO CELULAR': 'telefono_celular',
+                'CORREO ELECTRONICO': 'correo_electronico',
+                'CARGO': 'cargo',
+                'CATEGORIA TABLA': 'categoria_tabla',
+                'PROYECTO Y O ORDEN DE SERVICIO': 'proyecto_y_o_orden_de_servicio',
+                'OBRA O LABOR CONTRATADA': 'obra_o_labor_contratada',
+                'LUGAR DE EJECUCION': 'lugar_de_ejecucion',
+                'FECHA DE INICIO': 'fecha_de_inicio',
+                'PERIODO DE PRUEBA': 'periodo_de_prueba',
+                'FECHA TERMINACION': 'fecha_terminacion',
+                'SALARIO': 'salario',
+                'SALARIO LETRAS': 'salario_letras',
+                'CLAUSURA TERCERA': 'clausura_tercera',
+                'HORARIO LABORAL': 'horario_laboral',
+                'PARAGRAFO DIRECCIÓN MANEJO Y CONFIANZA': 'paragrafo_direccion_manejo_y_confianza',
+                'FECHA FIRMA CONTRATO': 'fecha_firma_contrato',
+                'NIVEL DE ESTUDIO': 'nivel_de_estudio',
+                'TITULO': 'titulo',
+                'TARJETA LICENCIA MATRICULA COPNIA': 'tarjeta_licencia_matricula_copnia',
+                'COMPETENCIAS TECNICAS CUMPLE NO CUMPLE NO APLICA': 'competencias_tecnicas_cumple_no_cumple_no_aplica',
+                'CURSOS': 'cursos',
+                'LICENCIA DE CONDUCCION': 'licencia_de_conduccion',
+                'EXPERIENCIA LABORAL': 'experiencia_laboral',
+                'SIG GR F 42 SOLICITUD DE PERSONAL': 'sig_gr_f_42_solicitud_de_personal',
+                'CERTIFICADO DE RESIDENCIA': 'certificado_de_residencia',
+                'POSTULACION APE': 'postulacion_ape',
+                'APROBACION SSTA CARGOS': 'aprobacion_ssta_cargos',
+                'APROBACION SSTA EMO': 'aprobacion_ssta_emo',
+                'SAGRILAFT': 'sagrilaft',
+                'ARL': 'arl',
+                'EPS': 'eps',
+                'AFP': 'afp',
+                'CESANTIAS': 'cesantias',
+                'CUENTA BANCARIA': 'cuenta_bancaria',
+                'BANCO': 'banco',
+                'FECHA EXPEDICION DOC IDENTIDAD': 'fecha_expedicion_doc_identidad',
+                'SEXO': 'sexo',
+                'ESTADO CIVIL': 'estado_civil',
+                'CONFIRMACION CONTRATACION GERENCIA OPERACIONES': 'confirmacion_contratacion_gerencia_operaciones',
+                'OBSERVACIONES': 'observaciones',
+                'ESTADO': 'estado',
+                'SIG GR F 06 INDUCCION': 'sig_gr_f_06_induccion',
+                'SIG GR F 31 FUNCIONES': 'sig_gr_f_31_funciones',
+                'SIG GR F 27 INFORMACION TRABAJADOR': 'sig_gr_f_27_informacion_trabajador',
+                'SIG GR F 04 DOTACION Y EPPS': 'sig_gr_f_04_dotacion_y_epps',
+                'FORMATO MANEJO DE IMAGEN': 'formato_manejo_de_imagen',
+                'AUTORIZACION MEDIOS ELECTRONICOS': 'autorizacion_medios_electronicos',
+                'SIG GR F 01 ENTREVISTA': 'sig_gr_f_01_entrevista',
+                'SIG GR F 03 ASIGNACION ROL': 'sig_gr_f_03_asignacion_rol',
+                'SIG GR F 37 HV CONDUCTORES': 'sig_gr_f_37_hv_conductores',
+                'SIG GR F 61 PERFIL DEL CARGO FUNCIONES Y RESPONSABILIDADES': 'sig_gr_f_61_perfil_del_cargo_funciones_y_responsabilidades',
+                'HV DIGITAL COMPLETA SEGUN SIG GR F 32': 'hv_digital_completa_segun_sig_gr_f_32',
+                'PDF ASOCIADO': 'pdf_asociado'
+            };
+            const columnasTabla = Object.values(mapeoColumnas);
+            const headers = excelData[0];
+            // Crear un mapeo de encabezados normalizados a índice
+            const encabezadosNorm = headers.map(h => normalizarEncabezado(h));
+            for (let i = 1; i < excelData.length; i++) {
+                const fila = excelData[i];
+                // Filtrar filas vacías o con solo celdas vacías
+                if (!fila || fila.every(cell => !cell || cell.toString().trim() === '')) continue;
+                const registro = {};
+                headers.forEach((col, idx) => {
+                    const colNorm = normalizarEncabezado(col);
+                    const columnaSupabase = mapeoColumnas[colNorm];
+                    if (columnaSupabase) {
+                        registro[columnaSupabase] = fila[idx] || null;
+                    }
+                });
+                // Validar campos obligatorios
+                if (!registro.nombres_y_apellidos || !registro.no_de_identificacion) continue;
+                // Filtrar solo columnas válidas
+                Object.keys(registro).forEach(key => {
+                    if (!columnasTabla.includes(key)) {
+                        delete registro[key];
+                    }
+                });
+                // Convertir fechas a formato YYYY-MM-DD si aplica
+                [
+                    'fecha_de_nacimiento',
+                    'fecha_de_inicio',
+                    'fecha_terminacion',
+                    'fecha_firma_contrato',
+                    'fecha_expedicion_doc_identidad'
+                ].forEach(campoFecha => {
+                    if (registro[campoFecha]) registro[campoFecha] = formatearFecha(registro[campoFecha]);
+                });
+                // Guardar en Supabase
+                const { error } = await supabase
+                    .from('empleados')
+                    .upsert([registro], { onConflict: 'no_de_identificacion' });
+                if (error) {
+                    console.error('Error al guardar en Supabase:', error);
+                }
+            }
+            alert('Datos cargados/actualizados en la base de datos.');
+        }
+
+        // Función para normalizar encabezados (quita tildes, espacios extra y saltos de línea)
+        function normalizarTexto(texto) {
+            return texto
+                .toUpperCase()
+                .replace(/[ÁÀÄÂ]/g, 'A')
+                .replace(/[ÉÈËÊ]/g, 'E')
+                .replace(/[ÍÌÏÎ]/g, 'I')
+                .replace(/[ÓÒÖÔ]/g, 'O')
+                .replace(/[ÚÙÜÛ]/g, 'U')
+                .replace(/Ñ/g, 'N')
+                .replace(/[^A-Z0-9 ]/g, '')
+                .replace(/\s+/g, ' ')
+                .replace(/\r?\n|\r/g, ' ')
+                .trim();
+        }
+
+        // Función para firmar todos los PDFs y descargarlos en un ZIP
+        async function firmarTodosPDFs() {
+            try {
+                if (!currentUser || (currentUser.role !== 'DirectoraRH' && currentUser.role !== 'admin')) {
+                    alert('Solo el rol de DirectorRH puede firmar documentos.');
+                    return;
+                }
+
+                if (!window.firmaUrl) {
+                    alert('Por favor, cargue una firma antes de continuar.');
+                    return;
+                }
+
+                if (!sharedData.excelData || sharedData.excelData.length <= 1) {
+                    alert('No hay datos de empleados disponibles.');
+                    return;
+                }
+
+                const headers = sharedData.excelData[0];
+                const nombreIndex = headers.indexOf('NOMBRES Y APELLIDOS');
+                const estadoIndex = headers.indexOf('ESTADO');
+
+                if (nombreIndex === -1 || estadoIndex === -1) {
+                    alert('No se encontraron las columnas necesarias en el Excel.');
+                    return;
+                }
+
+                // Filtrar documentos autorizados por nombre de empleado en el nombre del PDF
+                const documentosAutorizados = [];
+                for (let i = 1; i < sharedData.excelData.length; i++) {
+                    const row = sharedData.excelData[i];
+                    if (row && row[estadoIndex] === 'AUTORIZADO') {
+                        const nombreEmpleado = String(row[nombreIndex] || '').trim();
+                        if (nombreEmpleado) {
+                            // Normalizar nombre para buscar en el nombre del archivo
+                            const nombreNormalizado = normalizarTexto(nombreEmpleado).replace(/\s+/g, '');
+                            const pdfEncontrado = Object.keys(sharedData.pdfs).find(filename =>
+                                normalizarTexto(filename).replace(/\s+/g, '').includes(nombreNormalizado)
+                            );
+                            if (pdfEncontrado) {
+                                documentosAutorizados.push({
+                                    nombre: nombreEmpleado,
+                                    pdfName: pdfEncontrado
+                                });
+                            }
+                        }
+                    }
+                }
+
+                if (documentosAutorizados.length === 0) {
+                    alert('No hay documentos autorizados para firmar.');
+                    return;
+                }
+
+                // Crear un nuevo objeto ZIP
+                const zip = new JSZip();
+                
+                // Mostrar indicador de progreso
+                const progressDiv = document.createElement('div');
+                progressDiv.style.position = 'fixed';
+                progressDiv.style.top = '50%';
+                progressDiv.style.left = '50%';
+                progressDiv.style.transform = 'translate(-50%, -50%)';
+                progressDiv.style.padding = '20px';
+                progressDiv.style.background = 'white';
+                progressDiv.style.border = '1px solid #ccc';
+                progressDiv.style.borderRadius = '5px';
+                progressDiv.style.zIndex = '1000';
+                document.body.appendChild(progressDiv);
+
+                let processedCount = 0;
+                for (const doc of documentosAutorizados) {
+                    try {
+                        progressDiv.textContent = `Procesando documento ${processedCount + 1} de ${documentosAutorizados.length}: ${doc.pdfName}`;
+                        
+                        const pdfData = sharedData.pdfs[doc.pdfName];
+                        if (!pdfData) {
+                            console.warn(`No se encontró el PDF para ${doc.nombre}`);
+                            continue;
+                        }
+
+                        // Convertir ArrayBuffer a Blob
+                        const pdfBlob = new Blob([pdfData], { type: 'application/pdf' });
+                        
+                        // Firmar el PDF
+                        const signedPdfBlob = await procesarYFirmarPDF(pdfBlob);
+                        
+                        // Añadir al ZIP
+                        zip.file(`firmado_${doc.pdfName}`, signedPdfBlob);
+                        
+                        processedCount++;
+                    } catch (error) {
+                        console.error(`Error procesando PDF ${doc.pdfName}:`, error);
+                    }
+                }
+
+                if (processedCount === 0) {
+                    alert('No se pudo procesar ningún documento.');
+                    document.body.removeChild(progressDiv);
+                    return;
+                }
+
+                // Generar el ZIP
+                progressDiv.textContent = 'Generando archivo ZIP...';
+                const zipBlob = await zip.generateAsync({type: 'blob'});
+                
+                // Crear URL y descargar
+                const zipUrl = URL.createObjectURL(zipBlob);
+                const downloadLink = document.createElement('a');
+                downloadLink.href = zipUrl;
+                downloadLink.download = 'documentos_firmados.zip';
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                URL.revokeObjectURL(zipUrl);
+                
+                // Eliminar indicador de progreso
+                document.body.removeChild(progressDiv);
+                
+                alert(`Se han firmado y descargado ${processedCount} documentos autorizados.`);
+            } catch (error) {
+                console.error('Error al firmar todos los PDFs:', error);
+                alert('Ocurrió un error al procesar los documentos. Por favor, intente nuevamente.');
+            }
+        }
+
+        async function procesarYFirmarPDF(pdfBlob) {
+            const arrayBuffer = await pdfBlob.arrayBuffer();
+            const pdfDoc = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+            const posicionFirma = await determinarPosicionFirmaContrato(pdfDoc);
+
+            // --- INICIO: Ajustes para reducción de tamaño ---
+            const newScale = 2.0; // Anteriormente 2.0. Prueba valores como 1.5, 1.2 o incluso 1.0
+            const jpegQuality = 0.65; // Anteriormente 0.7. Prueba valores como 0.6, 0.5
+            // --- FIN: Ajustes para reducción de tamaño ---
+
+            // Crear nuevo PDF con la firma y calidad optimizada
+            const doc = new jspdf.jsPDF({
+                orientation: 'portrait',
+                unit: 'pt',
+                hotfixes: ["px_scaling"],
+                compress: true // Habilitar compresión
+            });
+
+            try {
+                // Copiar páginas y añadir firma
+                for (let i = 1; i <= pdfDoc.numPages; i++) {
+                    const page = await pdfDoc.getPage(i);
+                    const viewport = page.getViewport({ scale: newScale }); // Usar newScale
+
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d', { alpha: false });
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+
+                    // Configurar el contexto para calidad balanceada
+                    context.imageSmoothingEnabled = true;
+                    context.imageSmoothingQuality = 'medium';
+
+                    await page.render({
+                        canvasContext: context,
+                        viewport: viewport,
+                        intent: 'display' // Cambiar a 'display' para mejor compresión
+                    }).promise;
+
+                    const imgData = canvas.toDataURL('image/jpeg', jpegQuality); // Usar jpegQuality
+
+                    if (i > 1) {
+                        doc.addPage();
+                    }
+
+                    // Añadir la página del PDF con calidad optimizada
+                    doc.addImage(imgData, 'JPEG', 0, 0, doc.internal.pageSize.width, doc.internal.pageSize.height, undefined, 'MEDIUM');
+                    
+                    // Añadir marca de agua con calidad optimizada
+                    try {
+                        const pageWidth = doc.internal.pageSize.width;
+                        const pageHeight = doc.internal.pageSize.height;
+                        
+                        const watermarkCanvas = document.createElement('canvas');
+                        const watermarkCtx = watermarkCanvas.getContext('2d');
+                        
+                        await new Promise((resolve, reject) => {
+                            const img = new Image();
+                            img.onload = () => {
+                                const watermarkWidth = pageWidth * 0.9;
+                                const watermarkHeight = (watermarkWidth * img.height) / img.width;
+                                
+                                watermarkCanvas.width = watermarkWidth;
+                                watermarkCanvas.height = watermarkHeight;
+                                
+                                watermarkCtx.imageSmoothingEnabled = true;
+                                watermarkCtx.imageSmoothingQuality = 'medium';
+                                
+                                watermarkCtx.drawImage(img, 0, 0, watermarkWidth, watermarkHeight);
+                                
+                                const x = (pageWidth - watermarkWidth) / 2;
+                                const y = (pageHeight - watermarkHeight) / 2;
+
+                                doc.saveGraphicsState();
+                                doc.setGState(new doc.GState({opacity: 0.25}));
+                                doc.addImage(
+                                    watermarkCanvas.toDataURL('image/png', 0.7), // Mantener calidad PNG o reducir si es posible
+                                    'PNG',
+                                    x,
+                                    y,
+                                    watermarkWidth,
+                                    watermarkHeight,
+                                    null,
+                                    'MEDIUM'
+                                );
+                                doc.restoreGraphicsState();
+                                resolve();
+                            };
+                            img.onerror = reject;
+                            img.src = WATERMARK_BASE64;
+                        });
+                    } catch (watermarkError) {
+                        console.error('Error al añadir marca de agua:', watermarkError);
+                    }
+
+                    // Añadir firma en la última página
+                    if (i === pdfDoc.numPages) {
+                        try {
+                            const qrX = posicionFirma.x * (doc.internal.pageSize.width / (viewport.width / newScale));
+                            const qrY = posicionFirma.y * (doc.internal.pageSize.height / (viewport.height / newScale));
+                            const qrWidth = posicionFirma.width * (doc.internal.pageSize.width / (viewport.width / newScale));
+                            const qrHeight = posicionFirma.height * (doc.internal.pageSize.height / (viewport.height / newScale));
+
+                            const offsetY = qrHeight * 0.15;
+
+                            const firmaWidth = 180;
+                            const firmaHeight = qrHeight;
+                            const firmaX = qrX + (qrWidth / 2) - (firmaWidth / 2);
+                            const firmaY = qrY - offsetY;
+
+                            const margen = 0.5;
+                            const fondoWidth = qrWidth * 0.7;
+                            const fondoHeight = 56;
+                            const fondoX = qrX + (qrWidth - fondoWidth) / 2;
+                            const fondoY = qrY - margen + 4;
+
+                            // 1. Fondo blanco
+                            doc.setFillColor(255, 255, 255);
+                            doc.rect(fondoX, fondoY, fondoWidth, fondoHeight, 'F');
+
+                            // 2. Marca de agua optimizada
+                            try {
+                                const pageWidth = doc.internal.pageSize.width;
+                                const pageHeight = doc.internal.pageSize.height;
+                                const watermarkCanvas = document.createElement('canvas');
+                                const watermarkCtx = watermarkCanvas.getContext('2d');
+                                await new Promise((resolve, reject) => {
+                                    const img = new Image();
+                                    img.onload = () => {
+                                        const watermarkWidth = pageWidth * 0.9;
+                                        const watermarkHeight = (watermarkWidth * img.height) / img.width;
+                                        watermarkCanvas.width = watermarkWidth;
+                                        watermarkCanvas.height = watermarkHeight;
+                                        watermarkCtx.imageSmoothingEnabled = true;
+                                        watermarkCtx.imageSmoothingQuality = 'medium';
+                                        watermarkCtx.drawImage(img, 0, 0, watermarkWidth, watermarkHeight);
+                                        const x = (pageWidth - watermarkWidth) / 2;
+                                        const y = (pageHeight - watermarkHeight) / 2;
+                                        doc.saveGraphicsState();
+                                        doc.setGState(new doc.GState({opacity: 0.25}));
+                                        doc.addImage(
+                                            watermarkCanvas.toDataURL('image/png', 0.7),
+                                            'PNG',
+                                            x,
+                                            y,
+                                            watermarkWidth,
+                                            watermarkHeight,
+                                            null,
+                                            'MEDIUM'
+                                        );
+                                        doc.restoreGraphicsState();
+                                        resolve();
+                                    };
+                                    img.onerror = reject;
+                                    img.src = WATERMARK_BASE64;
+                                });
+                            } catch (watermarkError) {
+                                console.error('Error al añadir marca de agua:', watermarkError);
+                            }
+
+                            // 3. Firma optimizada
+                            doc.addImage(
+                                window.firmaUrl,
+                                'PNG',
+                                firmaX,
+                                firmaY,
+                                firmaWidth,
+                                firmaHeight,
+                                null,
+                                'MEDIUM'
+                            );
+                        } catch (signatureError) {
+                            console.error('Error al añadir firma:', signatureError);
+                        }
+                    }
+                }
+
+                // Configurar opciones de compresión adicionales
+                const options = {
+                    compress: true,
+                    precision: 2, // Reducir precisión de números
+                    image: {
+                        quality: jpegQuality // Usar jpegQuality global para imágenes que jsPDF pueda recomprimir
+                    }
+                };
+
+                return doc.output('blob', options);
+            } catch (error) {
+                console.error('Error al procesar el PDF:', error);
+                throw error;
+            }
+        }
+
+        // ... existing code ...
+        // Función para buscar empleados (Confirmador)
+        async function searchConfirmadorRowsEmpleados() {
+            try {
+                const empleadosList = document.getElementById('empleados-list');
+                if (!empleadosList) return;
+
+                // Obtener estados seleccionados
+                const estadoSelect = document.getElementById('confirmador-search-input-empleados');
+                const estadosSeleccionados = Array.from(estadoSelect.selectedOptions).map(option => option.value);
+                const todosSeleccionados = estadosSeleccionados.includes('');
+
+                // Obtener fecha seleccionada
+                const fechaInicioFilter = document.getElementById('fecha-inicio-filter').value;
+
+                // Obtener todos los empleados
+                const { data: empleadosData, error } = await supabase
+                    .from('empleados')
+                    .select('*');
+
+                if (error) throw error;
+
+                empleadosList.innerHTML = '';
+                let encontrados = false;
+
+                empleadosData.forEach(empleado => {
+                    const estado = (empleado.estado || 'SIN REVISION').toUpperCase();
+                    const fechaInicio = empleado.fecha_de_inicio;
+                    
+                    // Verificar si cumple con los filtros de estado y fecha
+                    const cumpleEstado = todosSeleccionados || estadosSeleccionados.includes(estado);
+                    const cumpleFecha = !fechaInicioFilter || fechaInicio === fechaInicioFilter;
+
+                    if (cumpleEstado && cumpleFecha) {
+                        encontrados = true;
+                        const empleadoCard = document.createElement('div');
+                        empleadoCard.className = `empleado-card ${estado.toLowerCase().replace(' ', '-')}`;
+                        empleadoCard.innerHTML = `
+                            <div class="empleado-nombre">${empleado.nombres_y_apellidos || 'Sin nombre'}</div>
+                            <div class="empleado-info">
+                                <span>Documento: ${empleado.no_de_identificacion || 'N/A'}</span>
+                                <span>Cargo: ${empleado.cargo || 'N/A'}</span>
+                                <span>Fecha Inicio: ${empleado.fecha_de_inicio || 'N/A'}</span>
+                            </div>
+                            <div class="empleado-estado">Estado: ${estado}</div>
+                        `;
+                        empleadoCard.onclick = () => showEmpleadoDetailsById(empleado.no_de_identificacion);
+                        empleadosList.appendChild(empleadoCard);
+                    }
+                });
+
+                if (!encontrados) {
+                    empleadosList.innerHTML = '<p>No se encontraron empleados con los filtros seleccionados</p>';
+                }
+            } catch (error) {
+                console.error('Error en la búsqueda:', error);
+                alert('Error al filtrar empleados: ' + error.message);
+            }
+        }
+
+        // Nueva función para mostrar detalles por id
+        async function showEmpleadoDetailsById(noIdentificacion) {
+            try {
+                const { data: empleado, error } = await supabase.from('empleados').select('*').eq('no_de_identificacion', noIdentificacion).single();
+                if (error || !empleado) {
+                    alert('No se encontró el empleado');
+                    return;
+                }
+                // Mostrar el contenedor de detalles
+                const detallesContainer = document.getElementById('empleado-details');
+                detallesContainer.classList.add('active');
+                // Mostrar información del empleado
+                const infoGrid = document.getElementById('info-grid');
+                infoGrid.innerHTML = '';
+                Object.keys(empleado).forEach(key => {
+                    const infoItem = document.createElement('div');
+                    infoItem.className = 'info-item';
+                    // Permitir editar estado si el usuario es DirectoraRH o admin
+                    const esDirectoraRH = currentUser && String(currentUser.role).toLowerCase() === 'directorarh'.toLowerCase();
+                    const esAdmin = currentUser && String(currentUser.role).toLowerCase() === 'admin';
+                    if (key === 'estado' && (esDirectoraRH || esAdmin)) {
+                        // Mostrar un select editable
+                        infoItem.innerHTML = `
+                            <label>Estado</label>
+                            <select id="select-estado-empleado" onchange="window.actualizarEstadoEmpleadoDirectoraRH('${empleado.no_de_identificacion}', this.value)">
+                                <option value="SIN REVISION" ${empleado.estado === 'SIN REVISION' ? 'selected' : ''}>Sin Revisión</option>
+                                <option value="PENDIENTE" ${empleado.estado === 'PENDIENTE' ? 'selected' : ''}>Pendiente</option>
+                                <option value="REVISADO" ${empleado.estado === 'REVISADO' ? 'selected' : ''}>Revisado</option>
+                                <option value="AUTORIZADO" ${empleado.estado === 'AUTORIZADO' ? 'selected' : ''}>Autorizado</option>
+                            </select>
+                        `;
+                    } else {
+                        infoItem.innerHTML = `
+                            <label>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</label>
+                            <span>${empleado[key] || ''}</span>
+                        `;
+                    }
+                    infoGrid.appendChild(infoItem);
+                });
+                // Renderizar PDFs en el contenedor correcto
+                renderizarPDFsEnDetallesEmpleado();
+            } catch (error) {
+                alert('Error al mostrar detalles del empleado');
+            }
+        }
+
+        // Nueva función para actualizar el estado desde el select
+        async function actualizarEstadoEmpleadoDirectoraRH(noIdentificacion, nuevoEstado) {
+            try {
+                const { error } = await supabase.from('empleados').update({ estado: nuevoEstado }).eq('no_de_identificacion', noIdentificacion);
+                if (error) {
+                    alert('Error al actualizar el estado: ' + error.message);
+                } else {
+                    alert('Estado actualizado correctamente');
+                    // Refrescar detalles y la lista
+                    showEmpleadoDetailsById(noIdentificacion);
+                    if (typeof searchConfirmadorRowsEmpleados === 'function') {
+                        searchConfirmadorRowsEmpleados();
+                    }
+                }
+            } catch (error) {
+                alert('Error al actualizar el estado');
+            }
+        }
+        // Hacer la función global para el onchange del select
+        window.actualizarEstadoEmpleadoDirectoraRH = actualizarEstadoEmpleadoDirectoraRH;
+        // ... existing code ...
+
+        // --- En la función loadExistingData, asegúrate de que siempre lea de la tabla 'empleados' y actualice la vista ---
+        async function loadExistingData() {
+            try {
+                const { data, error } = await supabase.from('empleados').select('*');
+                if (error) {
+                    throw new Error('Error al cargar datos existentes: ' + error.message);
+                }
+                if (!data || data.length === 0) {
+                    alert('No hay datos existentes en la base de datos.');
+                    return;
+                }
+                // Convertir los datos a formato Excel
+                const headers = Object.keys(data[0]).map(key => 
+                    key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+                );
+                const rows = data.map(record => 
+                    Object.values(record).map(value => value || '')
+                );
+                // Actualizar sharedData
+                sharedData.excelData = [headers, ...rows];
+                sharedData.filteredRows = Array.from(
+                    { length: rows.length }, 
+                    (_, i) => i + 1
+                );
+                sharedData.currentRowIndex = 1;
+                // Actualizar la interfaz
+                document.getElementById('excel-data').style.display = 'block';
+                document.getElementById('total-rows').textContent = sharedData.filteredRows.length;
+                displayExcelRow();
+            } catch (error) {
+                console.error('Error al cargar datos existentes:', error);
+                alert('Error al cargar datos existentes: ' + error.message);
+            }
+        }
+
+        function mostrarEmpleadosEnLista(empleados, contenedor, esReciente) {
+            contenedor.innerHTML = '';
+            if (!empleados || empleados.length === 0) {
+                contenedor.innerHTML = '<p>No hay empleados para mostrar</p>';
+                return;
+            }
+            empleados.forEach(empleado => {
+                const empleadoCard = document.createElement('div');
+                empleadoCard.className = `empleado-card ${empleado.estado?.toLowerCase().replace(' ', '-') || 'sin-revision'}`;
+                empleadoCard.innerHTML = `
+                    <div class="empleado-nombre">${empleado.nombres_y_apellidos || 'Sin nombre'}</div>
+                    <div class="empleado-info">
+                        <span>Documento: ${empleado.no_de_identificacion || 'N/A'}</span>
+                        <span>Cargo: ${empleado.cargo || 'N/A'}</span>
+                    </div>
+                    <div class="empleado-estado">Estado: ${empleado.estado || 'SIN REVISION'}</div>
+                `;
+                // Solo permitir interacción con empleados recientes
+                if (esReciente) {
+                    empleadoCard.onclick = () => showEmpleadoDetails(empleado);
+                }
+                contenedor.appendChild(empleadoCard);
+            });
+        }
+
+        // Función para cargar la firma de la DirectoraRH desde Supabase Storage (nombre fijo)
+        async function cargarFirmaDirectora() {
+            if (!currentUser || (currentUser.role !== 'DirectoraRH' && currentUser.role !== 'admin')) return;
+            window.firmaUrl = "https://ixhsjtsilnfhuzgvkyve.supabase.co/storage/v1/object/public/firmas//firma.png";
+            document.querySelectorAll('.signature-preview').forEach(preview => {
+                preview.src = window.firmaUrl;
+                preview.style.display = 'block';
+            });
+            document.querySelectorAll('.signature-placeholder').forEach(placeholder => {
+                placeholder.style.display = 'none';
+            });
+        }
+
+        // Función para cambiar entre roles
+        async function cambiarRol(nuevoRol) {
+            if (!currentUser || currentUser.role !== 'admin') {
+                alert('Solo el administrador puede cambiar roles');
+                return;
+            }
+
+            // Ocultar todos los dashboards
+            document.getElementById('admin-dashboard').style.display = 'none';
+            document.getElementById('revisor-dashboard').style.display = 'none';
+            document.getElementById('confirmador-dashboard').style.display = 'none';
+
+            // Mostrar el dashboard correspondiente
+            if (nuevoRol === 'RH') {
+                document.getElementById('revisor-dashboard').style.display = 'block';
+                showTab('comparison-tab');
+                loadExistingData();
+            } else if (nuevoRol === 'DirectoraRH') {
+                const confirmadorDashboard = document.getElementById('confirmador-dashboard');
+                confirmadorDashboard.style.display = 'block';
+                await loadConfirmadorData();
+                initRealtimeSubscription();
+                await cargarFirmaDirectora();
+            }
+
+            // Actualizar información en el panel de admin
+            document.getElementById('current-role').textContent = nuevoRol;
+        }
+
+        // ... existing code ...
+        // Función para renderizar los PDFs en la vista de detalles del empleado
+        function renderizarPDFsEnDetallesEmpleado() {
+            const pdfGrid = document.getElementById('pdf-grid');
+            if (!pdfGrid) {
+                console.warn('No se encontró el contenedor #pdf-grid');
+                return;
+            }
+            pdfGrid.innerHTML = '';
+            const pdfs = sharedData.pdfs;
+            const pdfCount = Object.keys(pdfs).length;
+            if (pdfCount > 0) {
+                Object.keys(pdfs).forEach(filename => {
+                    const pdfItem = document.createElement('div');
+                    pdfItem.className = 'pdf-item';
+                    pdfItem.innerHTML = `
+                        <input type="checkbox" class="pdf-checkbox" value="${filename}" onchange="toggleSeleccionPDF(this)">
+                        <div class="pdf-icon">📄</div>
+                        <div class="pdf-name">${filename}</div>
+                    `;
+                    pdfGrid.appendChild(pdfItem);
+                });
+                // Actualizar el texto del botón según el estado
+                setTimeout(() => {
+                    const btn = document.getElementById('btn-seleccionar-todos');
+                    const checkboxes = document.querySelectorAll('.pdf-checkbox');
+                    const todosSeleccionados = Array.from(checkboxes).every(cb => cb.checked);
+                    btn.textContent = todosSeleccionados ? 'Deseleccionar Todos' : 'Seleccionar Todos';
+                }, 100);
+            } else {
+                pdfGrid.innerHTML = '<p style="text-align: center; color: #666;">No hay PDFs disponibles</p>';
+            }
+        }
+
+        // Modificar la función searchHistoricoRows
+        async function searchHistoricoRows() {
+            try {
+                const historicoList = document.getElementById('historico-list');
+                if (!historicoList) return;
+
+                // Obtener estados seleccionados
+                const estadoSelect = document.getElementById('historico-search-input');
+                const estadosSeleccionados = Array.from(estadoSelect.selectedOptions).map(option => option.value);
+                const todosSeleccionados = estadosSeleccionados.includes('');
+
+                // Obtener fecha seleccionada
+                const fechaInicioFilter = document.getElementById('historico-fecha-inicio-filter').value;
+
+                // Obtener todos los empleados
+                const { data: empleadosData, error } = await supabase
+                    .from('empleados')
+                    .select('*')
+                    .order('fecha_de_inicio', { ascending: true }); // Ordenar por fecha de inicio ascendente (más antiguos primero)
+
+                if (error) throw error;
+
+                historicoList.innerHTML = '';
+                let encontrados = false;
+
+                empleadosData.forEach(empleado => {
+                    const estado = (empleado.estado || 'SIN REVISION').toUpperCase();
+                    const fechaInicio = empleado.fecha_de_inicio;
+                    
+                    // Verificar si cumple con los filtros de estado y fecha
+                    const cumpleEstado = todosSeleccionados || estadosSeleccionados.includes(estado);
+                    const cumpleFecha = !fechaInicioFilter || fechaInicio === fechaInicioFilter;
+
+                    if (cumpleEstado && cumpleFecha) {
+                        encontrados = true;
+                        const empleadoCard = document.createElement('div');
+                        empleadoCard.className = `empleado-card ${estado.toLowerCase().replace(' ', '-')}`;
+                        empleadoCard.innerHTML = `
+                            <div class="empleado-nombre">${empleado.nombres_y_apellidos || 'Sin nombre'}</div>
+                            <div class="empleado-info">
+                                <span>Documento: ${empleado.no_de_identificacion || 'N/A'}</span>
+                                <span>Cargo: ${empleado.cargo || 'N/A'}</span>
+                                <span>Fecha Inicio: ${empleado.fecha_de_inicio || 'N/A'}</span>
+                            </div>
+                            <div class="empleado-estado">Estado: ${estado}</div>
+                        `;
+                        empleadoCard.onclick = () => showEmpleadoDetailsById(empleado.no_de_identificacion);
+                        historicoList.appendChild(empleadoCard);
+                    }
+                });
+
+                if (!encontrados) {
+                    historicoList.innerHTML = '<p>No se encontraron empleados con los filtros seleccionados</p>';
+                }
+            } catch (error) {
+                console.error('Error en la búsqueda:', error);
+                alert('Error al filtrar empleados: ' + error.message);
+            }
+        }
+
+        // Variable global para almacenar PDFs seleccionados
+        let pdfsSeleccionados = [];
+
+        // Función para manejar la selección de PDFs
+        function toggleSeleccionPDF(checkbox) {
+            const filename = checkbox.value;
+            if (checkbox.checked) {
+                if (!pdfsSeleccionados.includes(filename)) {
+                    pdfsSeleccionados.push(filename);
+                }
+            } else {
+                pdfsSeleccionados = pdfsSeleccionados.filter(f => f !== filename);
+            }
+        }
+
+        // Modificar firmarPDF para firmar solo los seleccionados
+        async function firmarPDF() {
+            try {
+                if (!currentUser || (currentUser.role !== 'DirectoraRH' && currentUser.role !== 'admin')) {
+                    alert('Solo el rol de DirectorRH puede firmar documentos.');
+                    return;
+                }
+                if (!window.firmaUrl) {
+                    alert('Por favor, cargue una firma antes de firmar.');
+                    return;
+                }
+                if (!pdfsSeleccionados.length) {
+                    alert('Por favor, seleccione al menos un PDF para firmar.');
+                    return;
+                }
+                for (const filename of pdfsSeleccionados) {
+                    const pdfData = sharedData.pdfs[filename];
+                    if (!(pdfData instanceof ArrayBuffer)) {
+                        alert(`El PDF ${filename} no es válido.`);
+                        continue;
+                    }
+                    const signedPdfBlob = await procesarYFirmarPDF(new Blob([pdfData], { type: 'application/pdf' }));
+                    const signedFilename = `firmado_${filename}`;
+                    const downloadUrl = URL.createObjectURL(signedPdfBlob);
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = downloadUrl;
+                    downloadLink.download = signedFilename;
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    document.body.removeChild(downloadLink);
+                    URL.revokeObjectURL(downloadUrl);
+                }
+                alert('Documentos firmados y descargados exitosamente.');
+                pdfsSeleccionados = [];
+                // Desmarcar todos los checkboxes
+                document.querySelectorAll('.pdf-checkbox').forEach(cb => cb.checked = false);
+            } catch (error) {
+                console.error('Error al firmar los PDFs:', error);
+                alert('Error al firmar los documentos: ' + error.message);
+            }
+        }
+
+        // Función para filtrar PDFs según el texto del buscador
+        function filtrarPDFs() {
+            const searchTerm = document.getElementById('pdf-search-input-empleado').value.toLowerCase();
+            const pdfItems = document.querySelectorAll('#pdf-grid .pdf-item');
+            pdfItems.forEach(item => {
+                const pdfName = item.querySelector('.pdf-name').textContent.toLowerCase();
+                item.style.display = pdfName.includes(searchTerm) ? 'block' : 'none';
+            });
+        }
+
+        // Función para seleccionar/deseleccionar todos los PDFs
+        function toggleSeleccionarTodosPDFs() {
+            const btn = document.getElementById('btn-seleccionar-todos');
+            const checkboxes = document.querySelectorAll('.pdf-checkbox');
+            const todosSeleccionados = Array.from(checkboxes).every(cb => cb.checked);
+            if (todosSeleccionados) {
+                checkboxes.forEach(cb => {
+                    cb.checked = false;
+                    toggleSeleccionPDF(cb);
+                });
+                btn.textContent = 'Seleccionar Todos';
+            } else {
+                checkboxes.forEach(cb => {
+                    cb.checked = true;
+                    toggleSeleccionPDF(cb);
+                });
+                btn.textContent = 'Deseleccionar Todos';
+            }
+        }
+    </script>
+
+    <!-- Botón para abrir el modal de cambio de contraseña en ambos dashboards -->
+    <style>
+    #modal-cambio-contrasena {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.3);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal-cambio-contrasena .modal-content {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      max-width: 350px;
+      margin: auto;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+    }
+    </style>
+
+    <script>
+    function abrirModalCambioContrasena() {
+        document.getElementById('modal-cambio-contrasena').style.display = 'flex';
+        document.getElementById('nueva-contrasena').value = '';
+        document.getElementById('confirmar-contrasena').value = '';
+        document.getElementById('mensaje-cambio-contrasena').textContent = '';
+    }
+    function cerrarModalCambioContrasena() {
+        document.getElementById('modal-cambio-contrasena').style.display = 'none';
+    }
+    async function cambiarContrasena() {
+        const nueva = document.getElementById('nueva-contrasena').value;
+        const confirmar = document.getElementById('confirmar-contrasena').value;
+        const mensaje = document.getElementById('mensaje-cambio-contrasena');
+        mensaje.style.color = 'red';
+        if (nueva.length < 6) {
+            mensaje.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+            return;
+        }
+        if (nueva !== confirmar) {
+            mensaje.textContent = 'Las contraseñas no coinciden.';
+            return;
+        }
+        const { error } = await supabase.auth.updateUser({ password: nueva });
+        if (error) {
+            mensaje.textContent = 'Error al cambiar la contraseña: ' + error.message;
+        } else {
+            mensaje.style.color = 'green';
+            mensaje.textContent = '¡Contraseña cambiada exitosamente!';
+            setTimeout(cerrarModalCambioContrasena, 1500);
+        }
+    }
+    </script>
+
+    <!-- Modal de cambio de contraseña -->
+    <div id="modal-cambio-contrasena">
+      <div class="modal-content">
+        <h3>Cambiar contraseña</h3>
+        <input type="password" id="nueva-contrasena" placeholder="Nueva contraseña" style="width:100%; margin-bottom:10px;">
+        <input type="password" id="confirmar-contrasena" placeholder="Confirmar contraseña" style="width:100%; margin-bottom:10px;">
+        <div id="mensaje-cambio-contrasena" style="margin-bottom:10px;"></div>
+        <button onclick="cambiarContrasena()" style="width:100%; margin-bottom:10px;">Guardar</button>
+        <button onclick="cerrarModalCambioContrasena()" style="width:100%;">Cancelar</button>
+      </div>
+    </div>
+
+    <!-- Agregar el botón en los dashboards -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // RH
+        const rhHeader = document.querySelector('#revisor-dashboard .header div');
+        if (rhHeader) {
+            const btn = document.createElement('button');
+            btn.textContent = 'Cambiar contraseña';
+            btn.className = 'logout-btn';
+            btn.style.background = '#1976d2';
+            btn.style.marginLeft = '10px';
+            btn.onclick = abrirModalCambioContrasena;
+            rhHeader.appendChild(btn);
+        }
+        // DirectoraRH
+        const drhHeader = document.querySelector('#confirmador-dashboard .header div');
+        if (drhHeader) {
+            const btn = document.createElement('button');
+            btn.textContent = 'Cambiar contraseña';
+            btn.className = 'logout-btn';
+            btn.style.background = '#1976d2';
+            btn.style.marginLeft = '10px';
+            btn.onclick = abrirModalCambioContrasena;
+            drhHeader.appendChild(btn);
+        }
+    });
+    </script>
+</body>
+</html>
