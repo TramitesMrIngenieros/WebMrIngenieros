@@ -208,7 +208,7 @@
                                    id="historico-search-input" 
                                    class="search-input" 
                                    placeholder="Buscar por nombre, documento o cargo..."
-                                   oninput="searchHistoricoEmpleados()">
+                                   oninput="searchHistoricoRows()">
                         </div>
                         <div id="historico-list" class="empleados-list"></div>
                         <button onclick="downloadExcel()" class="download-btn" style="width: 100%; margin-top: 15px; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
@@ -2126,7 +2126,7 @@
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'empleados_supabase.xlsx';
+                a.download = 'Contratos_Empleados.xlsx';
                 a.click();
                 window.URL.revokeObjectURL(url);
 
@@ -2621,56 +2621,44 @@
                     alert('Solo el rol de DirectorRH puede firmar documentos.');
                     return;
                 }
-
                 if (!window.firmaUrl) {
                     alert('Por favor, cargue una firma antes de continuar.');
                     return;
                 }
-
-                if (!sharedData.excelData || sharedData.excelData.length <= 1) {
-                    alert('No hay datos de empleados disponibles.');
+                // Obtener la fecha seleccionada en el filtro de autorización nuevos ingresos
+                let fechaSeleccionada = '';
+                const fechaInput = document.getElementById('fecha-inicio-filter');
+                if (fechaInput && fechaInput.value) {
+                    fechaSeleccionada = fechaInput.value;
+                }
+                // Obtener empleados desde Supabase
+                const { data: empleadosData, error } = await supabase
+                    .from('empleados')
+                    .select('*');
+                if (error) throw error;
+                if (!Array.isArray(empleadosData) || empleadosData.length === 0) {
+                    alert('No hay empleados almacenados.');
                     return;
                 }
-
-                const headers = sharedData.excelData[0];
-                const nombreIndex = headers.indexOf('NOMBRES Y APELLIDOS');
-                const estadoIndex = headers.indexOf('ESTADO');
-
-                if (nombreIndex === -1 || estadoIndex === -1) {
-                    alert('No se encontraron las columnas necesarias en el Excel.');
+                // Función para normalizar texto (quitar tildes, espacios y pasar a minúsculas)
+                function normalizarTexto(texto) {
+                    return String(texto || '')
+                        .toLowerCase()
+                        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                        .replace(/[^a-z0-9]/g, '');
+                }
+                // Filtrar empleados autorizados y por fecha seleccionada
+                const empleadosAutorizados = empleadosData.filter(emp => {
+                    const autorizado = (emp.estado || '').toUpperCase() === 'AUTORIZADO';
+                    const cumpleFecha = !fechaSeleccionada || emp.fecha_de_inicio === fechaSeleccionada;
+                    return autorizado && cumpleFecha;
+                });
+                if (empleadosAutorizados.length === 0) {
+                    alert('No hay empleados autorizados para firmar con la fecha seleccionada.');
                     return;
                 }
-
-                // Filtrar documentos autorizados por nombre de empleado en el nombre del PDF
-                const documentosAutorizados = [];
-                for (let i = 1; i < sharedData.excelData.length; i++) {
-                    const row = sharedData.excelData[i];
-                    if (row && row[estadoIndex] === 'AUTORIZADO') {
-                        const nombreEmpleado = String(row[nombreIndex] || '').trim();
-                        if (nombreEmpleado) {
-                            // Normalizar nombre para buscar en el nombre del archivo
-                            const nombreNormalizado = normalizarTexto(nombreEmpleado).replace(/\s+/g, '');
-                            const pdfEncontrado = Object.keys(sharedData.pdfs).find(filename =>
-                                normalizarTexto(filename).replace(/\s+/g, '').includes(nombreNormalizado)
-                            );
-                            if (pdfEncontrado) {
-                                documentosAutorizados.push({
-                                    nombre: nombreEmpleado,
-                                    pdfName: pdfEncontrado
-                                });
-                            }
-                        }
-                    }
-                }
-
-                if (documentosAutorizados.length === 0) {
-                    alert('No hay documentos autorizados para firmar.');
-                    return;
-                }
-
                 // Crear un nuevo objeto ZIP
                 const zip = new JSZip();
-                
                 // Mostrar indicador de progreso
                 const progressDiv = document.createElement('div');
                 progressDiv.style.position = 'fixed';
@@ -2683,56 +2671,56 @@
                 progressDiv.style.borderRadius = '5px';
                 progressDiv.style.zIndex = '1000';
                 document.body.appendChild(progressDiv);
-
                 let processedCount = 0;
-                for (const doc of documentosAutorizados) {
+                for (const emp of empleadosAutorizados) {
                     try {
-                        progressDiv.textContent = `Procesando documento ${processedCount + 1} de ${documentosAutorizados.length}: ${doc.pdfName}`;
-                        
-                        const pdfData = sharedData.pdfs[doc.pdfName];
+                        // 1. Intentar por pdf_asociado
+                        let pdfName = emp.pdf_asociado;
+                        let pdfData = pdfName && sharedData.pdfs[pdfName] ? sharedData.pdfs[pdfName] : null;
+                        // 2. Si no existe, buscar por nombre
                         if (!pdfData) {
-                            console.warn(`No se encontró el PDF para ${doc.nombre}`);
-                            continue;
+                            const nombreArchivo = `CONTRATO - ${emp.nombres_y_apellidos || ''}.pdf`;
+                            // Buscar de forma flexible
+                            const pdfEncontrado = Object.keys(sharedData.pdfs).find(filename =>
+                                normalizarTexto(filename) === normalizarTexto(nombreArchivo)
+                            );
+                            if (pdfEncontrado) {
+                                pdfName = pdfEncontrado;
+                                pdfData = sharedData.pdfs[pdfEncontrado];
+                            }
                         }
-
+                        if (!pdfData) continue;
+                        progressDiv.textContent = `Procesando documento ${processedCount + 1} de ${empleadosAutorizados.length}: ${pdfName}`;
                         // Convertir ArrayBuffer a Blob
                         const pdfBlob = new Blob([pdfData], { type: 'application/pdf' });
-                        
                         // Firmar el PDF
                         const signedPdfBlob = await procesarYFirmarPDF(pdfBlob);
-                        
                         // Añadir al ZIP
-                        zip.file(`firmado_${doc.pdfName}`, signedPdfBlob);
-                        
+                        zip.file(`firmado_${pdfName}`, signedPdfBlob);
                         processedCount++;
                     } catch (error) {
-                        console.error(`Error procesando PDF ${doc.pdfName}:`, error);
+                        console.error('Error procesando PDF para empleado:', emp, error);
                     }
                 }
-
                 if (processedCount === 0) {
                     alert('No se pudo procesar ningún documento.');
                     document.body.removeChild(progressDiv);
                     return;
                 }
-
                 // Generar el ZIP
                 progressDiv.textContent = 'Generando archivo ZIP...';
                 const zipBlob = await zip.generateAsync({type: 'blob'});
-                
                 // Crear URL y descargar
                 const zipUrl = URL.createObjectURL(zipBlob);
                 const downloadLink = document.createElement('a');
                 downloadLink.href = zipUrl;
-                downloadLink.download = 'documentos_firmados.zip';
+                downloadLink.download = 'Documentos_Firmados.zip';
                 document.body.appendChild(downloadLink);
                 downloadLink.click();
                 document.body.removeChild(downloadLink);
                 URL.revokeObjectURL(zipUrl);
-                
                 // Eliminar indicador de progreso
                 document.body.removeChild(progressDiv);
-                
                 alert(`Se han firmado y descargado ${processedCount} documentos autorizados.`);
             } catch (error) {
                 console.error('Error al firmar todos los PDFs:', error);
@@ -3203,37 +3191,48 @@
                 const historicoList = document.getElementById('historico-list');
                 if (!historicoList) return;
 
-                // Obtener estados seleccionados
-                const estadoSelect = document.getElementById('historico-search-input');
-                const estadosSeleccionados = Array.from(estadoSelect.selectedOptions).map(option => option.value);
-                const todosSeleccionados = estadosSeleccionados.includes('');
+                // Obtener el valor del input de búsqueda
+                const searchInput = document.getElementById('historico-search-input');
+                const searchTerm = searchInput && searchInput.value ? searchInput.value.toLowerCase().trim() : '';
 
-                // Obtener fecha seleccionada
-                const fechaInicioFilter = document.getElementById('historico-fecha-inicio-filter').value;
+                // Obtener fecha seleccionada (si existe el input)
+                let fechaInicioFilter = '';
+                const fechaInput = document.getElementById('historico-fecha-inicio-filter');
+                if (fechaInput && fechaInput.value) {
+                    fechaInicioFilter = fechaInput.value;
+                }
 
                 // Obtener todos los empleados
                 const { data: empleadosData, error } = await supabase
                     .from('empleados')
                     .select('*')
-                    .order('fecha_de_inicio', { ascending: true }); // Ordenar por fecha de inicio ascendente (más antiguos primero)
+                    .order('fecha_de_inicio', { ascending: true });
 
                 if (error) throw error;
 
                 historicoList.innerHTML = '';
                 let encontrados = false;
 
+                // Validación para evitar error si empleadosData es undefined
+                if (!Array.isArray(empleadosData)) {
+                    historicoList.innerHTML = '<p>No hay empleados para mostrar</p>';
+                    return;
+                }
+
                 empleadosData.forEach(empleado => {
-                    const estado = (empleado.estado || 'SIN REVISION').toUpperCase();
+                    const nombre = (empleado.nombres_y_apellidos || '').toLowerCase();
+                    const documento = (empleado.no_de_identificacion || '').toLowerCase();
+                    const cargo = (empleado.cargo || '').toLowerCase();
                     const fechaInicio = empleado.fecha_de_inicio;
-                    
-                    // Verificar si cumple con los filtros de estado y fecha
-                    const cumpleEstado = todosSeleccionados || estadosSeleccionados.includes(estado);
+
+                    // Verificar si cumple con el filtro de búsqueda y fecha
+                    const cumpleBusqueda = !searchTerm || nombre.includes(searchTerm) || documento.includes(searchTerm) || cargo.includes(searchTerm);
                     const cumpleFecha = !fechaInicioFilter || fechaInicio === fechaInicioFilter;
 
-                    if (cumpleEstado && cumpleFecha) {
+                    if (cumpleBusqueda && cumpleFecha) {
                         encontrados = true;
                         const empleadoCard = document.createElement('div');
-                        empleadoCard.className = `empleado-card ${estado.toLowerCase().replace(' ', '-')}`;
+                        empleadoCard.className = `empleado-card ${(empleado.estado || 'SIN REVISION').toLowerCase().replace(' ', '-')}`;
                         empleadoCard.innerHTML = `
                             <div class="empleado-nombre">${empleado.nombres_y_apellidos || 'Sin nombre'}</div>
                             <div class="empleado-info">
@@ -3241,7 +3240,7 @@
                                 <span>Cargo: ${empleado.cargo || 'N/A'}</span>
                                 <span>Fecha Inicio: ${empleado.fecha_de_inicio || 'N/A'}</span>
                             </div>
-                            <div class="empleado-estado">Estado: ${estado}</div>
+                            <div class="empleado-estado">Estado: ${(empleado.estado || 'SIN REVISION').toUpperCase()}</div>
                         `;
                         empleadoCard.onclick = () => showEmpleadoDetailsById(empleado.no_de_identificacion);
                         historicoList.appendChild(empleadoCard);
